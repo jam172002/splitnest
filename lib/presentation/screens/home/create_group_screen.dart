@@ -19,6 +19,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   bool _busy = false;
   bool _requireApproval = true;
   bool _adminBypass = true;
+  String _approvalMode = 'any';
   String? _err;
 
   @override
@@ -41,6 +42,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         email: u.email ?? '',
         requireApproval: _requireApproval,
         adminBypass: _adminBypass,
+        approvalMode: _approvalMode,
       );
       if (mounted) context.go('/group/$gid');
     } catch (e) {
@@ -57,11 +59,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'Group name'),
-          ),
+          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Group name')),
           const SizedBox(height: 12),
+
           SwitchListTile(
             value: _requireApproval,
             onChanged: (v) => setState(() => _requireApproval = v),
@@ -72,8 +72,20 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             onChanged: (v) => setState(() => _adminBypass = v),
             title: const Text('Admin entries auto-approved'),
           ),
-          if (_err != null)
-            Text(_err!, style: const TextStyle(color: Colors.red)),
+          const SizedBox(height: 12),
+
+          DropdownButtonFormField<String>(
+            value: _approvalMode,
+            items: const [
+              DropdownMenuItem(value: 'any', child: Text('ANY endorsement approves')),
+              DropdownMenuItem(value: 'all', child: Text('ALL participants must approve')),
+              DropdownMenuItem(value: 'admin_only', child: Text('ADMIN only approves')),
+            ],
+            onChanged: (v) => setState(() => _approvalMode = v ?? 'any'),
+            decoration: const InputDecoration(labelText: 'Approval Mode'),
+          ),
+
+          if (_err != null) Text(_err!, style: const TextStyle(color: Colors.red)),
           const SizedBox(height: 12),
           BusyButton(busy: _busy, onPressed: _create, text: 'Create'),
         ],

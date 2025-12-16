@@ -7,6 +7,7 @@ import 'app_router.dart';
 import 'data/auth_repo.dart';
 import 'data/group_repo.dart';
 import 'data/personal_repo.dart';
+import 'data/notifications_repo.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,7 @@ class SplitNestApp extends StatelessWidget {
         Provider(create: (_) => AuthRepo()),
         Provider(create: (_) => GroupRepo()),
         Provider(create: (_) => PersonalRepo()),
+        Provider(create: (_) => NotificationsRepo()),
       ],
       child: MaterialApp.router(
         debugShowCheckedModeBanner: false,

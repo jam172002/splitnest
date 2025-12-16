@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
+import '../../../domain/models/group.dart';
 import '../../../domain/models/group_member.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/busy_button.dart';
@@ -31,11 +32,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     super.dispose();
   }
 
-  Future<void> _save({
-    required bool requireApproval,
-    required bool adminBypass,
-    required bool isAdmin,
-  }) async {
+  Future<void> _save({required Group group, required bool isAdmin}) async {
     setState(() {
       _busy = true;
       _err = null;
@@ -47,19 +44,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (_paidBy == null) throw Exception('Select money provider (paid by)');
       if (_participants.isEmpty) throw Exception('Select participants');
 
-      final auth = context.read<AuthRepo>();
-      final myUid = auth.currentUser!.uid;
+      final myUid = context.read<AuthRepo>().currentUser!.uid;
 
       await context.read<GroupRepo>().addExpense(
         groupId: widget.groupId,
+        group: group,
         amount: amt,
         category: _category,
         paidBy: _paidBy!,
         participants: _participants.toList(),
         at: DateTime.now(),
         createdBy: myUid,
-        requireApproval: requireApproval,
-        adminBypass: adminBypass,
         isAdmin: isAdmin,
       );
 
@@ -74,15 +69,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<GroupRepo>();
-    final auth = context.read<AuthRepo>();
-    final myUid = auth.currentUser!.uid;
+    final myUid = context.read<AuthRepo>().currentUser!.uid;
 
-    return StreamBuilder(
+    return StreamBuilder<Group>(
       stream: repo.watchGroup(widget.groupId),
       builder: (context, groupSnap) {
-        final g = groupSnap.data;
-        final requireApproval = g?.requireApproval ?? true;
-        final adminBypass = g?.adminBypass ?? true;
+        final group = groupSnap.data;
+        if (group == null) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
 
         return FutureBuilder<String>(
           future: repo.roleOf(widget.groupId, myUid),
@@ -108,17 +103,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         TextField(
                           controller: _amount,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Amount',
-                            hintText: 'e.g 800',
-                          ),
+                          decoration: const InputDecoration(labelText: 'Amount', hintText: 'e.g 800'),
                         ),
                         const SizedBox(height: 12),
 
                         StreamBuilder<List<String>>(
                           stream: repo.watchCategories(widget.groupId),
                           builder: (context, catSnap) {
-                            final cats = catSnap.data ?? ['breakfast', 'lunch', 'dinner', 'tea', 'milk'];
+                            final cats = catSnap.data ?? ['breakfast', 'lunch', 'dinner'];
                             if (!cats.contains(_category)) _category = cats.first;
                             return DropdownButtonFormField<String>(
                               value: _category,
@@ -132,12 +124,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
                           value: _paidBy,
-                          items: members
-                              .map((m) => DropdownMenuItem(
-                            value: m.uid,
-                            child: Text(m.email),
-                          ))
-                              .toList(),
+                          items: members.map((m) => DropdownMenuItem(value: m.uid, child: Text(m.email))).toList(),
                           onChanged: (v) => setState(() => _paidBy = v),
                           decoration: const InputDecoration(labelText: 'Money provider (paid by)'),
                         ),
@@ -165,20 +152,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         }),
 
                         const SizedBox(height: 8),
-                        if (_err != null)
-                          Text(_err!, style: const TextStyle(color: Colors.red)),
+                        if (_err != null) Text(_err!, style: const TextStyle(color: Colors.red)),
                         const SizedBox(height: 12),
 
                         BusyButton(
                           busy: _busy,
-                          onPressed: () => _save(
-                            requireApproval: requireApproval,
-                            adminBypass: adminBypass,
-                            isAdmin: isAdmin,
-                          ),
-                          text: (isAdmin && adminBypass)
+                          onPressed: () => _save(group: group, isAdmin: isAdmin),
+                          text: (isAdmin && group.adminBypass)
                               ? 'Save (Auto-approved)'
-                              : (requireApproval ? 'Save (Pending Approval)' : 'Save (Approved)'),
+                              : (group.requireApproval ? 'Save (Pending Approval)' : 'Save (Approved)'),
                         ),
                       ],
                     ),

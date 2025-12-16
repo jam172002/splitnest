@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../data/auth_repo.dart';
+import '../../../data/notifications_repo.dart';
 import '../../widgets/busy_button.dart';
 import '../../widgets/app_scaffold.dart';
 
@@ -33,7 +34,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       await context.read<AuthRepo>().login(_email.text.trim(), _pass.text.trim());
+      final uid = context.read<AuthRepo>().currentUser!.uid;
+      await context.read<NotificationsRepo>().initAndSaveToken(uid);
       if (mounted) context.go('/app/groups');
+
     } catch (e) {
       setState(() => _err = e.toString());
     } finally {

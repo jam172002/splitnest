@@ -16,9 +16,7 @@ class GroupDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthRepo>();
-    final myUid = auth.currentUser!.uid;
-
+    final myUid = context.watch<AuthRepo>().currentUser!.uid;
     final repo = context.read<GroupRepo>();
 
     return StreamBuilder(
@@ -31,6 +29,16 @@ class GroupDashboardScreen extends StatelessWidget {
           title: title,
           actions: [
             IconButton(
+              onPressed: () => context.push('/group/$groupId/settings'),
+              icon: const Icon(Icons.tune),
+              tooltip: 'Settings',
+            ),
+            IconButton(
+              onPressed: () => context.push('/group/$groupId/categories'),
+              icon: const Icon(Icons.category_outlined),
+              tooltip: 'Categories',
+            ),
+            IconButton(
               onPressed: () => context.push('/group/$groupId/approvals'),
               icon: const Icon(Icons.verified),
               tooltip: 'Approvals',
@@ -41,9 +49,22 @@ class GroupDashboardScreen extends StatelessWidget {
               tooltip: 'Members',
             ),
           ],
-          fab: FloatingActionButton(
-            onPressed: () => context.push('/group/$groupId/add'),
-            child: const Icon(Icons.add),
+          fab: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton.extended(
+                heroTag: 'settle',
+                onPressed: () => context.push('/group/$groupId/settle'),
+                label: const Text('Settle'),
+                icon: const Icon(Icons.swap_horiz),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton(
+                heroTag: 'add',
+                onPressed: () => context.push('/group/$groupId/add'),
+                child: const Icon(Icons.add),
+              ),
+            ],
           ),
           child: StreamBuilder<List<GroupMember>>(
             stream: repo.watchMembers(groupId),
@@ -55,31 +76,30 @@ class GroupDashboardScreen extends StatelessWidget {
                 stream: repo.watchTx(groupId),
                 builder: (context, txSnap) {
                   final all = txSnap.data ?? [];
-                  final approved = all.where((t) => t.status == TxStatus.approved && t.type == 'expense').toList();
+                  final approvedExpenses =
+                  all.where((t) => t.type == 'expense' && t.status == TxStatus.approved).toList();
+                  final approvedSettles =
+                  all.where((t) => t.type == 'settlement' && t.status == TxStatus.approved).toList();
 
-                  if (members.isEmpty) {
-                    return const EmptyHint('Loading members...');
-                  }
+                  if (members.isEmpty) return const EmptyHint('Loading members...');
 
-                  // Calculate totals (MVP: approved expenses only)
-                  double totalGroup = 0;
+                  // ---- Compute balances ----
                   final paid = <String, double>{};
                   final share = <String, double>{};
+                  final settle = <String, double>{}; // net effect from settlements
 
-                  DateTime now = DateTime.now();
-                  bool sameDay(DateTime a, DateTime b) =>
-                      a.year == b.year && a.month == b.month && a.day == b.day;
+                  double totalGroup = 0;
 
-                  DateTime weekStart = now.subtract(Duration(days: now.weekday - 1)); // Monday
+                  final now = DateTime.now();
+                  bool sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+                  DateTime weekStart = now.subtract(Duration(days: now.weekday - 1));
                   bool inWeek(DateTime d) => d.isAfter(weekStart.subtract(const Duration(seconds: 1)));
-
                   bool sameMonth(DateTime a, DateTime b) => a.year == b.year && a.month == b.month;
 
                   double totalDay = 0, totalWeek = 0, totalMonth = 0;
 
-                  for (final t in approved) {
+                  for (final t in approvedExpenses) {
                     totalGroup += t.amount;
-
                     if (sameDay(t.at, now)) totalDay += t.amount;
                     if (inWeek(t.at)) totalWeek += t.amount;
                     if (sameMonth(t.at, now)) totalMonth += t.amount;
@@ -93,9 +113,20 @@ class GroupDashboardScreen extends StatelessWidget {
                     }
                   }
 
+                  // Settlements: from pays to. This reduces from's net, increases to's net.
+                  for (final s in approvedSettles) {
+                    settle[s.fromUid] = (settle[s.fromUid] ?? 0) - s.amount;
+                    settle[s.toUid] = (settle[s.toUid] ?? 0) + s.amount;
+                  }
+
+                  double netFor(String uid) {
+                    final n = (paid[uid] ?? 0) - (share[uid] ?? 0) + (settle[uid] ?? 0);
+                    return n;
+                  }
+
                   final myPaid = paid[myUid] ?? 0;
                   final myShare = share[myUid] ?? 0;
-                  final myNet = myPaid - myShare;
+                  final myNet = netFor(myUid);
 
                   Widget statTile(String label, String value) {
                     return Container(
@@ -115,6 +146,11 @@ class GroupDashboardScreen extends StatelessWidget {
                     );
                   }
 
+                  final combinedRecent = [
+                    ...approvedExpenses.take(30),
+                    ...approvedSettles.take(30),
+                  ]..sort((a, b) => b.at.compareTo(a.at));
+
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -129,10 +165,7 @@ class GroupDashboardScreen extends StatelessWidget {
                           SizedBox(width: 170, child: statTile('My Share', Fmt.money(myShare))),
                           SizedBox(
                             width: 170,
-                            child: statTile(
-                              'My Net',
-                              '${myNet >= 0 ? '+' : ''}${Fmt.money(myNet)}',
-                            ),
+                            child: statTile('My Net', '${myNet >= 0 ? '+' : ''}${Fmt.money(myNet)}'),
                           ),
                         ],
                       ),
@@ -149,22 +182,34 @@ class GroupDashboardScreen extends StatelessWidget {
                       ),
 
                       const SizedBox(height: 18),
-                      Text('Recent transactions', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Recent activity', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
 
                       Expanded(
-                        child: approved.isEmpty
-                            ? const EmptyHint('No approved expenses yet.\nTap + to add one.')
+                        child: combinedRecent.isEmpty
+                            ? const EmptyHint('No activity yet.\nAdd an expense or settlement.')
                             : ListView.separated(
-                          itemCount: approved.length,
+                          itemCount: combinedRecent.length,
                           separatorBuilder: (_, __) => const Divider(height: 1),
                           itemBuilder: (context, i) {
-                            final t = approved[i];
+                            final t = combinedRecent[i];
+
+                            if (t.type == 'settlement') {
+                              final fromEmail = memberMap[t.fromUid]?.email ?? t.fromUid;
+                              final toEmail = memberMap[t.toUid]?.email ?? t.toUid;
+                              return ListTile(
+                                leading: const Icon(Icons.swap_horiz),
+                                title: Text('Settlement • ${Fmt.money(t.amount)}'),
+                                subtitle: Text('$fromEmail → $toEmail • ${Fmt.date(t.at)}'),
+                              );
+                            }
+
                             final payer = memberMap[t.paidBy]?.email ?? t.paidBy;
                             final pCount = t.participants.length;
                             final per = pCount == 0 ? t.amount : (t.amount / pCount);
 
                             return ListTile(
+                              leading: const Icon(Icons.receipt_long),
                               title: Text('${t.category} • ${Fmt.money(t.amount)}'),
                               subtitle: Text('Paid by $payer • ${Fmt.date(t.at)} • Split: ${Fmt.money(per)} each'),
                             );

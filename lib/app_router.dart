@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -17,6 +16,10 @@ import 'presentation/screens/group/group_dashboard_screen.dart';
 import 'presentation/screens/group/add_expense_screen.dart';
 import 'presentation/screens/group/approvals_screen.dart';
 import 'presentation/screens/group/members_screen.dart';
+
+import 'presentation/screens/group/categories_screen.dart';
+import 'presentation/screens/group/add_settlement_screen.dart';
+import 'presentation/screens/group/group_settings_screen.dart';
 
 import 'presentation/screens/personal/personal_home_screen.dart';
 import 'presentation/screens/personal/add_personal_tx_screen.dart';
@@ -115,6 +118,28 @@ GoRouter buildRouter() {
             builder: (context, state) {
               final gid = state.pathParameters['gid']!;
               return MembersScreen(groupId: gid);
+            },
+          ),
+
+          GoRoute(
+            path: 'categories',
+            builder: (context, state) {
+              final gid = state.pathParameters['gid']!;
+              return CategoriesScreen(groupId: gid);
+            },
+          ),
+          GoRoute(
+            path: 'settle',
+            builder: (context, state) {
+              final gid = state.pathParameters['gid']!;
+              return AddSettlementScreen(groupId: gid);
+            },
+          ),
+          GoRoute(
+            path: 'settings',
+            builder: (context, state) {
+              final gid = state.pathParameters['gid']!;
+              return GroupSettingsScreen(groupId: gid);
             },
           ),
         ],

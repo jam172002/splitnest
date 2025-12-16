@@ -4,7 +4,9 @@ class AppScaffold extends StatelessWidget {
   final String title;
   final Widget child;
   final List<Widget>? actions;
-  final FloatingActionButton? fab;
+
+  /// Changed from FloatingActionButton? to Widget?
+  final Widget? fab;
 
   const AppScaffold({
     super.key,
@@ -18,7 +20,7 @@ class AppScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(title), actions: actions),
-      floatingActionButton: fab,
+      floatingActionButton: fab, // now accepts Column or anything
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
