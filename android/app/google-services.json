@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "466626241242",
+    "project_id": "splitnest-2aadd",
+    "storage_bucket": "splitnest-2aadd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:466626241242:android:1095cee1184f36deeefbe3",
+        "android_client_info": {
+          "package_name": "com.example.splitnest"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5ZiziBthlrnBZMunei8Cx59eHIFMY-lA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
