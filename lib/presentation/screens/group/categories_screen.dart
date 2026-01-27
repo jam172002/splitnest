@@ -13,6 +13,7 @@ class CategoriesScreen extends StatefulWidget {
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
   final _name = TextEditingController();
+  bool _isAdding = false;
 
   @override
   void dispose() {
@@ -20,51 +21,120 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     super.dispose();
   }
 
+  Future<void> _onAdd(GroupRepo repo) async {
+    final text = _name.text.trim().toLowerCase();
+    if (text.isEmpty) return;
+
+    setState(() => _isAdding = true);
+    try {
+      await repo.addCategory(widget.groupId, text);
+      _name.clear();
+      if (mounted) FocusScope.of(context).unfocus();
+    } finally {
+      if (mounted) setState(() => _isAdding = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final repo = context.read<GroupRepo>();
 
     return AppScaffold(
-      title: 'Categories',
+      title: 'Manage Categories',
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _name,
-                  decoration: const InputDecoration(labelText: 'Add category (e.g. rent)'),
+          // --- Input Header Section ---
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow, //
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _name,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _onAdd(repo),
+                    decoration: InputDecoration(
+                      hintText: 'Add category (e.g. Rent)',
+                      prefixIcon: const Icon(Icons.label_outline_rounded),
+                      filled: true,
+                      fillColor: colorScheme.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () async {
-                  await repo.addCategory(widget.groupId, _name.text);
-                  _name.clear();
-                },
-                child: const Text('Add'),
-              ),
-            ],
+                const SizedBox(width: 12),
+                _isAdding
+                    ? const SizedBox(width: 48, height: 48, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 3)))
+                    : FloatingActionButton.small(
+                  onPressed: () => _onAdd(repo),
+                  elevation: 0,
+                  child: const Icon(Icons.add),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
+
+          // --- Categories List Section ---
           Expanded(
             child: StreamBuilder(
               stream: repo.watchCategoryDocs(widget.groupId),
               builder: (context, snap) {
                 final items = (snap.data ?? const <Map<String, dynamic>>[]) as List<Map<String, dynamic>>;
-                if (items.isEmpty) {
-                  return const Center(child: Text('No categories yet.'));
+
+                if (snap.connectionState == ConnectionState.waiting && items.isEmpty) {
+                  return const Center(child: CircularProgressIndicator());
                 }
-                return ListView.separated(
+
+                if (items.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.category_outlined, size: 64, color: colorScheme.outlineVariant),
+                        const SizedBox(height: 16),
+                        Text('No custom categories yet.', style: theme.textTheme.bodyLarge?.copyWith(color: colorScheme.outline)),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, i) {
                     final it = items[i];
-                    return ListTile(
-                      title: Text((it['name'] ?? '').toString()),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => repo.deleteCategory(widget.groupId, it['id'].toString()),
+                    final name = (it['name'] ?? '').toString();
+
+                    return Card(
+                      elevation: 0,
+                      color: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5)),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: colorScheme.primaryContainer,
+                          child: Icon(Icons.tag, size: 18, color: colorScheme.onPrimaryContainer),
+                        ),
+                        title: Text(
+                          name,
+                          style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+                        ),
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete_outline_rounded, color: colorScheme.error),
+                          onPressed: () => repo.deleteCategory(widget.groupId, it['id'].toString()),
+                        ),
                       ),
                     );
                   },

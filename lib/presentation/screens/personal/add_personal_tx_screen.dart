@@ -20,6 +20,8 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
   bool _busy = false;
   String? _err;
 
+  final List<String> _quickCategories = ['Groceries', 'Food', 'Transport', 'Rent', 'Medicine'];
+
   @override
   void dispose() {
     _title.dispose();
@@ -55,27 +57,89 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return AppScaffold(
-      title: 'Add Personal Expense',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _title,
-            decoration: const InputDecoration(labelText: 'Title (e.g. Groceries)'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _amount,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Amount'),
-          ),
-          const SizedBox(height: 12),
-          if (_err != null)
-            Text(_err!, style: const TextStyle(color: Colors.red)),
-          const SizedBox(height: 12),
-          BusyButton(busy: _busy, onPressed: _save, text: 'Save'),
-        ],
+      title: 'Personal Expense',
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // --- Large Amount Input Section ---
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                children: [
+                  Text('AMOUNT', style: theme.textTheme.labelLarge),
+                  TextField(
+                    controller: _amount,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.displayMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: '0.00',
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // --- Title Input ---
+            TextField(
+              controller: _title,
+              decoration: const InputDecoration(
+                labelText: 'Expense Title',
+                prefixIcon: Icon(Icons.description_outlined),
+                hintText: 'e.g. Weekly Groceries',
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // --- Quick Category Selection ---
+            Text('Quick Select', style: theme.textTheme.labelMedium),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _quickCategories.map((cat) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    label: Text(cat),
+                    onPressed: () => setState(() => _title.text = cat),
+                    backgroundColor: colorScheme.surfaceContainerLow,
+                  ),
+                )).toList(),
+              ),
+            ),
+
+            const SizedBox(height: 40),
+
+            if (_err != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(_err!, style: TextStyle(color: colorScheme.error), textAlign: TextAlign.center),
+              ),
+
+            BusyButton(
+                busy: _busy,
+                onPressed: _save,
+                text: 'Save Personal Expense'
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -28,6 +28,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    if (_email.text.isEmpty || _pass.text.isEmpty) {
+      setState(() => _err = "Please fill in all fields");
+      return;
+    }
+
     setState(() {
       _busy = true;
       _err = null;
@@ -37,9 +42,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final uid = context.read<AuthRepo>().currentUser!.uid;
       await context.read<NotificationsRepo>().initAndSaveToken(uid);
       if (mounted) context.go('/app/groups');
-
     } catch (e) {
-      setState(() => _err = e.toString());
+      // Friendly error mapping
+      setState(() => _err = "Invalid email or password");
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -47,31 +52,101 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return AppScaffold(
-      title: 'SplitNest Login',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _email,
-            decoration: const InputDecoration(labelText: 'Email'),
+      // We'll leave title empty or minimal for a modern login look
+      title: '',
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // --- Brand Section ---
+              Icon(
+                Icons.home_work_rounded, // A "Nest" themed icon
+                size: 80,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'SplitNest',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                  letterSpacing: -1,
+                ),
+              ),
+              Text(
+                'Fair splitting, simple living.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 48),
+
+              // --- Form Section ---
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _pass,
+                obscureText: true,
+                onSubmitted: (_) => _login(),
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: Icon(Icons.lock_outline_rounded),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              if (_err != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    _err!,
+                    style: TextStyle(color: colorScheme.error, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+              BusyButton(
+                  busy: _busy,
+                  onPressed: _login,
+                  text: 'Sign In'
+              ),
+
+              const SizedBox(height: 16),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Don't have an account?",
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  TextButton(
+                    onPressed: () => context.go('/register'),
+                    child: const Text('Create one'),
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _pass,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Password'),
-          ),
-          const SizedBox(height: 16),
-          if (_err != null)
-            Text(_err!, style: const TextStyle(color: Colors.red)),
-          const SizedBox(height: 8),
-          BusyButton(busy: _busy, onPressed: _login, text: 'Login'),
-          TextButton(
-            onPressed: () => context.go('/register'),
-            child: const Text('Create account'),
-          ),
-        ],
+        ),
       ),
     );
   }

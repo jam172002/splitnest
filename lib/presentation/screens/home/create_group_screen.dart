@@ -29,6 +29,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   }
 
   Future<void> _create() async {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _err = "Please enter a group name");
+      return;
+    }
+
     setState(() {
       _busy = true;
       _err = null;
@@ -54,41 +59,100 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return AppScaffold(
       title: 'Create Group',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Group name')),
-          const SizedBox(height: 12),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // --- Group Identity Section ---
+            Text(
+              "Group Details",
+              style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _name,
+              style: theme.textTheme.bodyLarge,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+                hintText: 'e.g., Flatmates, Road Trip',
+                prefixIcon: Icon(Icons.group_outlined),
+              ),
+            ),
+            const SizedBox(height: 32),
 
-          SwitchListTile(
-            value: _requireApproval,
-            onChanged: (v) => setState(() => _requireApproval = v),
-            title: const Text('Require approval for member entries'),
-          ),
-          SwitchListTile(
-            value: _adminBypass,
-            onChanged: (v) => setState(() => _adminBypass = v),
-            title: const Text('Admin entries auto-approved'),
-          ),
-          const SizedBox(height: 12),
+            // --- Settings Section ---
+            Text(
+              "Management Rules",
+              style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    value: _requireApproval,
+                    onChanged: (v) => setState(() => _requireApproval = v),
+                    title: const Text('Require Approvals'),
+                    subtitle: const Text('Entries must be endorsed by members'),
+                    secondary: const Icon(Icons.verified_user_outlined),
+                  ),
+                  const Divider(indent: 64, height: 1),
+                  SwitchListTile(
+                    value: _adminBypass,
+                    onChanged: (v) => setState(() => _adminBypass = v),
+                    title: const Text('Admin Bypass'),
+                    subtitle: const Text('Your entries are auto-approved'),
+                    secondary: const Icon(Icons.admin_panel_settings_outlined),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
 
-          DropdownButtonFormField<String>(
-            value: _approvalMode,
-            items: const [
-              DropdownMenuItem(value: 'any', child: Text('ANY endorsement approves')),
-              DropdownMenuItem(value: 'all', child: Text('ALL participants must approve')),
-              DropdownMenuItem(value: 'admin_only', child: Text('ADMIN only approves')),
-            ],
-            onChanged: (v) => setState(() => _approvalMode = v ?? 'any'),
-            decoration: const InputDecoration(labelText: 'Approval Mode'),
-          ),
+            // --- Logic Section ---
+            DropdownButtonFormField<String>(
+              value: _approvalMode,
+              items: const [
+                DropdownMenuItem(value: 'any', child: Text('Any member can approve')),
+                DropdownMenuItem(value: 'all', child: Text('Everyone must approve')),
+                DropdownMenuItem(value: 'admin_only', child: Text('Only Admin approves')),
+              ],
+              onChanged: (v) => setState(() => _approvalMode = v ?? 'any'),
+              decoration: const InputDecoration(
+                labelText: 'Approval Logic',
+                prefixIcon: Icon(Icons.rule_rounded),
+              ),
+            ),
 
-          if (_err != null) Text(_err!, style: const TextStyle(color: Colors.red)),
-          const SizedBox(height: 12),
-          BusyButton(busy: _busy, onPressed: _create, text: 'Create'),
-        ],
+            const SizedBox(height: 32),
+
+            if (_err != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  _err!,
+                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+
+            BusyButton(
+              busy: _busy,
+              onPressed: _create,
+              text: 'Launch Group',
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -3,6 +3,9 @@ class Group {
   final String name;
   final String createdBy;
 
+  /// number of members in this group
+  final int membersCount;
+
   /// require approval for member entries
   final bool requireApproval;
 
@@ -16,6 +19,7 @@ class Group {
     required this.id,
     required this.name,
     required this.createdBy,
+    this.membersCount = 1,
     this.requireApproval = true,
     this.adminBypass = true,
     this.approvalMode = 'any',
@@ -24,6 +28,7 @@ class Group {
   Map<String, dynamic> toMap() => {
     'name': name,
     'createdBy': createdBy,
+    'membersCount': membersCount,
     'requireApproval': requireApproval,
     'adminBypass': adminBypass,
     'approvalMode': approvalMode,
@@ -34,6 +39,7 @@ class Group {
     id: id,
     name: (m['name'] ?? '') as String,
     createdBy: (m['createdBy'] ?? '') as String,
+    membersCount: (m['membersCount'] ?? 1) as int,
     requireApproval: (m['requireApproval'] ?? true) as bool,
     adminBypass: (m['adminBypass'] ?? true) as bool,
     approvalMode: (m['approvalMode'] ?? 'any') as String,

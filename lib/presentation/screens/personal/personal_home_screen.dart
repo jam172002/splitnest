@@ -14,13 +14,16 @@ class PersonalHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final uid = context.read<AuthRepo>().currentUser!.uid;
 
     return AppScaffold(
       title: 'Personal Ledger',
-      fab: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/app/personal/add'),
-        child: const Icon(Icons.add),
+        label: const Text('Add Expense'),
+        icon: const Icon(Icons.add),
       ),
       child: StreamBuilder<List<PersonalTx>>(
         stream: context.read<PersonalRepo>().watchPersonal(uid),
@@ -28,68 +31,120 @@ class PersonalHomeScreen extends StatelessWidget {
           final items = snap.data ?? [];
           if (items.isEmpty) return const EmptyHint('No personal expenses yet.');
 
+          // --- Calculation Logic ---
           final now = DateTime.now();
-          bool sameDay(DateTime a, DateTime b) =>
-              a.year == b.year && a.month == b.month && a.day == b.day;
           DateTime weekStart = now.subtract(Duration(days: now.weekday - 1));
-          bool inWeek(DateTime d) => d.isAfter(weekStart.subtract(const Duration(seconds: 1)));
-          bool sameMonth(DateTime a, DateTime b) => a.year == b.year && a.month == b.month;
 
-          double day = 0, week = 0, month = 0;
+          double dayTotal = 0, weekTotal = 0, monthTotal = 0;
           for (final t in items) {
-            if (sameDay(t.at, now)) day += t.amount;
-            if (inWeek(t.at)) week += t.amount;
-            if (sameMonth(t.at, now)) month += t.amount;
+            if (DateUtils.isSameDay(t.at, now)) dayTotal += t.amount;
+            if (t.at.isAfter(weekStart.subtract(const Duration(seconds: 1)))) weekTotal += t.amount;
+            if (t.at.year == now.year && t.at.month == now.month) monthTotal += t.amount;
           }
 
-          Widget stat(String label, double v) {
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: TextStyle(color: Colors.grey.shade700)),
-                  const SizedBox(height: 6),
-                  Text(Fmt.money(v), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            );
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  SizedBox(width: 170, child: stat('Today', day)),
-                  SizedBox(width: 170, child: stat('This Week', week)),
-                  SizedBox(width: 170, child: stat('This Month', month)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final t = items[i];
-                    return ListTile(
-                      title: Text(t.title),
-                      subtitle: Text(Fmt.date(t.at)),
-                      trailing: Text(Fmt.money(t.amount)),
-                    );
-                  },
+          return CustomScrollView(
+            slivers: [
+              // --- Header Stats Section ---
+              SliverToBoxAdapter(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withOpacity(0.4),
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
+                  ),
+                  child: Column(
+                    children: [
+                      Text('THIS MONTH', style: theme.textTheme.labelLarge),
+                      const SizedBox(height: 4),
+                      Text(
+                        Fmt.money(monthTotal),
+                        style: theme.textTheme.displaySmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(child: _miniStat(context, 'Today', Fmt.money(dayTotal))),
+                          const SizedBox(width: 12),
+                          Expanded(child: _miniStat(context, 'Weekly', Fmt.money(weekTotal))),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
+
+              // --- List Header ---
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Text('Recent Transactions',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                ),
+              ),
+
+              // --- Transaction List ---
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                        (context, i) {
+                      final t = items[i];
+                      return Card(
+                        elevation: 0,
+                        color: colorScheme.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.4)),
+                        ),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: colorScheme.secondaryContainer,
+                            child: Icon(Icons.receipt_long_outlined,
+                                size: 20, color: colorScheme.onSecondaryContainer),
+                          ),
+                          title: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text(Fmt.date(t.at)),
+                          trailing: Text(
+                            Fmt.money(t.amount),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    childCount: items.length,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _miniStat(BuildContext context, String label, String value) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+          Text(value, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }
