@@ -42,6 +42,7 @@ class GroupRepo {
       id: ref.id,
       name: name,
       createdBy: uid,
+      memberUids: [uid], // ADD THIS LINE: Initialize with the creator's UID
       requireApproval: requireApproval,
       adminBypass: adminBypass,
       approvalMode: approvalMode,
@@ -172,19 +173,6 @@ class GroupRepo {
     // Optional: keep memberUids updated
     await _db.collection(FirestorePaths.groups).doc(groupId).update({
       'memberUids': FieldValue.arrayUnion([memberId]),
-    });
-  }
-
-  Future<void> removeMember(String groupId, String memberId) async {
-    await _db
-        .collection(FirestorePaths.groups)
-        .doc(groupId)
-        .collection('members')
-        .doc(memberId)
-        .delete();
-
-    await _db.collection(FirestorePaths.groups).doc(groupId).update({
-      'memberUids': FieldValue.arrayRemove([memberId]),
     });
   }
 
@@ -459,6 +447,7 @@ class GroupRepo {
     return balances;
   }
 
+
   Future<List<MemberBalance>> getMemberBalances(String groupId) async {
     final netBalances = await calculateMemberBalances(groupId);
 
@@ -492,6 +481,22 @@ class GroupRepo {
 
     return result;
   }
+  Future<void> removeMember(String groupId, String uid) async {
+    final groupRef = _db.collection('groups').doc(groupId);
+    final memberRef = groupRef.collection('members').doc(uid);
+
+    final batch = _db.batch();
+
+    // 1. Remove from the members sub-collection
+    batch.delete(memberRef);
+
+    // 2. Remove from the access array
+    batch.update(groupRef, {
+      'memberUids': FieldValue.arrayRemove([uid])
+    });
+
+    await batch.commit();
+  }
   // ────────────────────────────────────────────────
   // Member Transaction Details (for detail screen)
   // ────────────────────────────────────────────────
@@ -513,12 +518,27 @@ class GroupRepo {
     required String groupId,
     required String name,
     required String role,
+    required String uid,
   }) async {
-    await _db.collection('groups').doc(groupId).collection('members').add({
+    final groupRef = _db.collection('groups').doc(groupId);
+    final memberRef = groupRef.collection('members').doc(uid);
+
+    final batch = _db.batch();
+
+    // 1. Add the member document
+    batch.set(memberRef, {
       'name': name,
       'role': role,
       'joinedAt': FieldValue.serverTimestamp(),
     });
+
+    // 2. IMPORTANT: Update the main group document's array
+    // This fixes the "Invisible on restart" and "Member Count" bugs
+    batch.update(groupRef, {
+      'memberUids': FieldValue.arrayUnion([uid]),
+    });
+
+    await batch.commit();
   }
 
   /// Returns all expenses where this member was a participant (they owe a share)

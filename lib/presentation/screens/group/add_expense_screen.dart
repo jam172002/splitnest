@@ -21,6 +21,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
 
+  // Logic to hide hint on tap
+  final _amountFocus = FocusNode();
+
   String _category = 'breakfast';
   String? _paidBy;
   final Set<String> _participants = {};
@@ -29,9 +32,19 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    // Rebuild when focus changes to toggle hintText visibility
+    _amountFocus.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
     _amountController.dispose();
     _descriptionController.dispose();
+    _amountFocus.dispose();
     super.dispose();
   }
 
@@ -97,7 +110,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 builder: (context, membersSnapshot) {
                   final members = membersSnapshot.data ?? [];
 
-                  // Keep state consistent
                   if (_participants.isNotEmpty && _paidBy != null && !_participants.contains(_paidBy)) {
                     _paidBy = _participants.first;
                   }
@@ -109,19 +121,35 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // --- Main Transaction Details ---
+                        // --- Hero Amount Input ---
                         TextField(
                           controller: _amountController,
+                          focusNode: _amountFocus,
                           textAlign: TextAlign.center,
+                          autofocus: true,
                           style: theme.textTheme.displayMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: colorScheme.primary,
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
-                            hintText: '0.00',
-                            prefixText: 'PKR ',
-                            prefixStyle: theme.textTheme.titleLarge?.copyWith(color: colorScheme.outline),
+                            // Hides the "0.00" hint immediately when tapped
+                            hintText: _amountFocus.hasFocus ? '' : '0.00',
+                            hintStyle: theme.textTheme.displayMedium?.copyWith(
+                              color: colorScheme.outlineVariant,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                'PKR',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: colorScheme.primary.withOpacity(0.5),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
                             border: InputBorder.none,
                             enabledBorder: InputBorder.none,
                             focusedBorder: InputBorder.none,
@@ -130,13 +158,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         ),
                         const SizedBox(height: 24),
 
-                        // --- Category & Description Row ---
-                        // --- Category & Description Row (Fixed for Overflow) ---
+                        // --- Category & Note Row ---
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              flex: 5, // Gives Category slightly less space
+                              flex: 5,
                               child: StreamBuilder<List<String>>(
                                 stream: repo.watchCategories(widget.groupId),
                                 builder: (context, snap) {
@@ -144,7 +171,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                   if (!cats.contains(_category)) _category = cats.first;
                                   return DropdownButtonFormField<String>(
                                     value: _category,
-                                    isExpanded: true, // Prevents text from pushing the dropdown width
+                                    isExpanded: true,
                                     decoration: const InputDecoration(
                                       labelText: 'Category',
                                       prefixIcon: Icon(Icons.category_outlined, size: 20),
@@ -152,16 +179,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                     ),
                                     items: cats.map((c) => DropdownMenuItem(
                                         value: c,
-                                        child: Text(c, overflow: TextOverflow.ellipsis) // Truncates if too long
+                                        child: Text(c, overflow: TextOverflow.ellipsis)
                                     )).toList(),
                                     onChanged: (v) => setState(() => _category = v!),
                                   );
                                 },
                               ),
                             ),
-                            const SizedBox(width: 8), // Reduced gap slightly
+                            const SizedBox(width: 8),
                             Expanded(
-                              flex: 6, // Gives Note slightly more space
+                              flex: 6,
                               child: TextField(
                                 controller: _descriptionController,
                                 decoration: const InputDecoration(
@@ -175,7 +202,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        // --- Payer Section ---
+                        // --- Payer Selection ---
                         Text("Paid By", style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary)),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(

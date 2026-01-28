@@ -31,7 +31,6 @@ class MembersScreen extends StatelessWidget {
           final members = snapshot.data!;
           if (members.isEmpty) return const Center(child: Text('No members found'));
 
-          // Sort: Admins first, then by join date
           members.sort((a, b) {
             if (a.role == 'admin' && b.role != 'admin') return -1;
             if (a.role != 'admin' && b.role == 'admin') return 1;
@@ -61,20 +60,34 @@ class MembersScreen extends StatelessWidget {
                   ),
                   title: Text(m.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('Joined ${m.joinedAt.day}/${m.joinedAt.month}/${m.joinedAt.year}'),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isAdmin ? colorScheme.tertiaryContainer : colorScheme.surfaceVariant,
-                      borderRadius: BorderRadius.circular(20),
+                  // --- Added Delete Button ---
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 1. The existing Role Badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isAdmin ? colorScheme.tertiaryContainer : colorScheme.surfaceVariant,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            m.role.toUpperCase(),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: isAdmin ? colorScheme.onTertiaryContainer : colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+
+                        // 2. The NEW Delete Button (Hidden for Admins for safety)
+                        if (!isAdmin)
+                          IconButton(
+                            icon: Icon(Icons.person_remove_outlined, color: colorScheme.error),
+                            onPressed: () => _confirmDelete(context, repo, m.id, m.name),
+                          ),
+                      ],
                     ),
-                    child: Text(
-                      m.role.toUpperCase(),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: isAdmin ? colorScheme.onTertiaryContainer : colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
                 ),
               );
             },
@@ -84,10 +97,30 @@ class MembersScreen extends StatelessWidget {
     );
   }
 
+  // --- Delete Confirmation Dialog ---
+  void _confirmDelete(BuildContext context, GroupRepo repo, String uid, String name) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Remove Member?'),
+        content: Text('Are you sure you want to remove $name from the group?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              await repo.removeMember(groupId, uid);
+              if (context.mounted) Navigator.pop(c);
+            },
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAddMemberSheet(BuildContext context, GroupRepo repo) {
     final nameController = TextEditingController();
     String role = 'member';
-    bool isBusy = false;
 
     showModalBottomSheet(
       context: context,
@@ -95,6 +128,8 @@ class MembersScreen extends StatelessWidget {
       useSafeArea: true,
       builder: (ctx) => StatefulBuilder(
           builder: (context, setModalState) {
+            bool isBusy = false;
+
             return Padding(
               padding: EdgeInsets.only(
                 left: 20, right: 20, top: 20,
@@ -128,18 +163,19 @@ class MembersScreen extends StatelessWidget {
                   BusyButton(
                     busy: isBusy,
                     onPressed: () async {
-                      if (nameController.text.trim().isEmpty) return;
+                      if (nameController.text.isEmpty) return;
+
                       setModalState(() => isBusy = true);
-                      try {
-                        await repo.addMember(
-                          groupId: groupId,
-                          name: nameController.text.trim(),
-                          role: role,
-                        );
-                        if (context.mounted) Navigator.pop(context);
-                      } finally {
-                        setModalState(() => isBusy = false);
-                      }
+                      final virtualUid = DateTime.now().millisecondsSinceEpoch.toString();
+
+                      await repo.addMember(
+                        groupId: groupId, // Fixed 'widget' error
+                        name: nameController.text,
+                        role: role,
+                        uid: virtualUid, // Satisfies new required parameter
+                      );
+
+                      if (context.mounted) Navigator.pop(context);
                     },
                     text: 'Add to Group',
                   ),

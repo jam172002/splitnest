@@ -20,7 +20,6 @@ class GroupsScreen extends StatelessWidget {
 
     return AppScaffold(
       title: 'Groups',
-      // Clean, modern AppBar actions
       actions: [
         IconButton(
           onPressed: () => context.push('/app/groups/join'),
@@ -57,64 +56,119 @@ class GroupsScreen extends StatelessWidget {
             itemCount: items.length,
             itemBuilder: (context, i) {
               final g = items[i];
-              final membersCount = g.membersCount;
 
-              // Use standard Card but let the theme handle the shape/elevation
-              return Card(
-                // We use surfaceContainerLow to give a subtle contrast against the background
-                color: colorScheme.surfaceContainerLow,
+              // --- FIX: Pull count from the array length ---
+              // This ensures the count updates immediately when a new UID is added.
+              final membersCount = g.memberUids.length;
+
+              return Container(
                 margin: const EdgeInsets.only(bottom: 16),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  leading: Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12), // M3 uses squarer radii
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      g.name.isNotEmpty ? g.name[0].toUpperCase() : '?',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold,
+                  ],
+                ),
+                child: Card(
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerLow,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    side: BorderSide(
+                      color: colorScheme.outlineVariant.withOpacity(0.5),
+                    ),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () => context.push('/group/${g.id}'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          // Custom Icon/Avatar Box
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  colorScheme.primaryContainer,
+                                  colorScheme.primaryContainer.withOpacity(0.6),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              g.name.isNotEmpty ? g.name[0].toUpperCase() : '?',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                color: colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          // Text Content
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  g.name,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                // Modern Badge for member count
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.secondaryContainer.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.people_alt_rounded,
+                                        size: 14,
+                                        color: colorScheme.onSecondaryContainer,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '$membersCount member${membersCount == 1 ? '' : 's'}',
+                                        style: theme.textTheme.labelMedium?.copyWith(
+                                          color: colorScheme.onSecondaryContainer,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Action Arrow
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 16,
+                            color: colorScheme.outline,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  title: Text(
-                    g.name,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4.0),
-                    child: Row(
-                      children: [
-                        Icon(Icons.people_outline,
-                            size: 14,
-                            color: colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$membersCount member${membersCount == 1 ? '' : 's'}',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  trailing: Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 16,
-                    color: colorScheme.outlineVariant,
-                  ),
-                  onTap: () => context.push('/group/${g.id}'),
                 ),
               );
             },

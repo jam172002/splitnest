@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
@@ -15,38 +16,71 @@ class JoinGroupScreen extends StatefulWidget {
 }
 
 class _JoinGroupScreenState extends State<JoinGroupScreen> {
-  final _code = TextEditingController();
+  final _idController = TextEditingController();
   bool _busy = false;
   String? _err;
 
   @override
   void dispose() {
-    _code.dispose();
+    _idController.dispose();
     super.dispose();
   }
 
-  Future<void> _join() async {
-    final code = _code.text.trim();
-    if (code.isEmpty) {
-      setState(() => _err = "Please enter an invite code");
-      return;
-    }
+  // --- The QR Scanner Overlay ---
+  void _openScanner() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.black,
+      builder: (context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: const Text('Scan Group QR'),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: MobileScanner(
+          onDetect: (capture) {
+            final List<Barcode> barcodes = capture.barcodes;
+            if (barcodes.isNotEmpty) {
+              final String? code = barcodes.first.rawValue;
+              if (code != null) {
+                _idController.text = code;
+                Navigator.pop(context); // Close scanner
+                _join(); // Auto-trigger join
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
 
-    setState(() {
-      _busy = true;
-      _err = null;
-    });
+  Future<void> _join() async {
+    final id = _idController.text.trim();
+    if (id.isEmpty) return;
+
+    setState(() { _busy = true; _err = null; });
     try {
       final auth = context.read<AuthRepo>();
-      final u = auth.currentUser!;
-      await context.read<GroupRepo>().joinGroup(
-        groupId: code,
-        uid: u.uid,
-        email: u.email ?? '',
+      final repo = context.read<GroupRepo>();
+      final currentUser = auth.currentUser;
+
+      await repo.addMember(
+        groupId: id, // Your text field controller value
+        name: currentUser?.displayName ?? currentUser?.email?.split('@')[0] ?? 'New Member',
+        role: 'member',
+        uid: currentUser!.uid, // Use the actual UID of the person joining
       );
-      if (mounted) context.go('/group/$code');
+
+      if (mounted) context.pushReplacement('/group/$id');
     } catch (e) {
-      setState(() => _err = "Invalid code or group not found");
+      setState(() => _err = "Could not find or join group. Check the ID.");
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -59,88 +93,56 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
 
     return AppScaffold(
       title: 'Join Group',
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- Header Section ---
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withOpacity(0.4),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.key_rounded,
-                size: 64,
-                color: colorScheme.primary,
-              ),
-            ),
+            const SizedBox(height: 20),
+            Icon(Icons.group_add_outlined, size: 80, color: colorScheme.primary),
             const SizedBox(height: 24),
             Text(
-              "Have an invite code?",
+              'Enter a Group ID or scan a QR code to join your friends.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Enter the group ID shared by your friend to start splitting expenses together.",
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodyLarge,
             ),
             const SizedBox(height: 40),
 
-            // --- Input Section ---
+            // Text Input
             TextField(
-              controller: _code,
-              autofocus: true,
-              style: theme.textTheme.titleMedium?.copyWith(
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.bold,
-              ),
+              controller: _idController,
               decoration: InputDecoration(
-                labelText: 'Group ID / Invite Code',
-                hintText: 'e.g. kJH32k...',
-                prefixIcon: const Icon(Icons.qr_code_scanner_rounded),
-                helperText: 'The code is case-sensitive',
+                labelText: 'Group ID',
+                hintText: 'e.g. xYz123...',
+                prefixIcon: const Icon(Icons.vpn_key_outlined),
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.paste_rounded),
-                  onPressed: () {
-                    // You could add clipboard paste logic here
-                  },
+                  onPressed: _openScanner,
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
+                  color: colorScheme.primary,
                 ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
+
+            // Scan Button (Alternative entry)
+            OutlinedButton.icon(
+              onPressed: _openScanner,
+              icon: const Icon(Icons.camera_alt_outlined),
+              label: const Text('Scan QR Code'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+
+            const Spacer(),
 
             if (_err != null)
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 24),
-                decoration: BoxDecoration(
-                  color: colorScheme.errorContainer.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline, color: colorScheme.error, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _err!,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(_err!, style: TextStyle(color: colorScheme.error), textAlign: TextAlign.center),
               ),
 
             BusyButton(
@@ -148,6 +150,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
               onPressed: _join,
               text: 'Join Group',
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

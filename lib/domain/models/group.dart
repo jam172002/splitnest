@@ -1,7 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Group {
   final String id;
   final String name;
   final String createdBy;
+
+  /// NEW: Actual list of member IDs for filtering and counting
+  final List<String> memberUids;
 
   /// number of members in this group
   final int membersCount;
@@ -19,6 +24,7 @@ class Group {
     required this.id,
     required this.name,
     required this.createdBy,
+    required this.memberUids, // Required for list updates
     this.membersCount = 1,
     this.requireApproval = true,
     this.adminBypass = true,
@@ -28,6 +34,7 @@ class Group {
   Map<String, dynamic> toMap() => {
     'name': name,
     'createdBy': createdBy,
+    'memberUids': memberUids, // Keep this synced in Firestore
     'membersCount': membersCount,
     'requireApproval': requireApproval,
     'adminBypass': adminBypass,
@@ -39,6 +46,8 @@ class Group {
     id: id,
     name: (m['name'] ?? '') as String,
     createdBy: (m['createdBy'] ?? '') as String,
+    // Safely parse the memberUids list from Firestore
+    memberUids: List<String>.from(m['memberUids'] ?? []),
     membersCount: (m['membersCount'] ?? 1) as int,
     requireApproval: (m['requireApproval'] ?? true) as bool,
     adminBypass: (m['adminBypass'] ?? true) as bool,

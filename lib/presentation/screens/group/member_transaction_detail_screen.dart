@@ -46,6 +46,7 @@ class MemberTransactionDetailScreen extends StatelessWidget {
           final txs = snapshot.data ?? [];
 
           // --- Calculate Summary for Header ---
+          // Using member.id ensures math works even if names are duplicates
           double totalPaid = 0;
           double totalCost = 0;
           for (var t in txs) {
@@ -154,9 +155,15 @@ class MemberTransactionDetailScreen extends StatelessWidget {
   }
 
   Future<List<GroupTx>> _fetchMemberTransactions(GroupRepo repo, String groupId, String memberId) async {
+    // These methods in GroupRepo must use Firestore filters to find transactions
+    // where 'paidBy' == memberId or 'participants' array contains memberId
     final paid = await repo.getExpensesPaidByMember(groupId, memberId);
     final participated = await repo.getExpensesParticipatedByMember(groupId, memberId);
+
+    // Using a Set to avoid duplicates if a member paid for something they also participated in
     final allTx = <GroupTx>{...paid, ...participated}.toList();
+
+    // Sort by date (newest first)
     allTx.sort((a, b) => b.at.compareTo(a.at));
     return allTx;
   }

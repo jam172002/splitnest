@@ -58,7 +58,7 @@ class SplitNestApp extends StatelessWidget {
             title: 'SplitNest',
 
             // Pass the authRepo to the router for reactive redirects
-            routerConfig: buildRouter(authRepo),
+            routerConfig: appRouter,
 
             themeMode: ThemeMode.system,
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../../data/group_repo.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/busy_button.dart';
@@ -20,6 +21,77 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
   bool? _requireApproval;
   bool? _adminBypass;
   String? _approvalMode;
+
+  // --- QR Invite Logic ---
+  void _showInviteQR(BuildContext context, String groupId) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text('Group Invite QR',
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text(
+              'Your friend can scan this code to join the group instantly.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: QrImageView(
+                data: groupId,
+                version: QrVersions.auto,
+                size: 220.0,
+                eyeStyle: QrEyeStyle(
+                    eyeShape: QrEyeShape.circle, color: colorScheme.primary),
+                dataModuleStyle: QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.circle,
+                    color: colorScheme.primary),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text('Group ID: $groupId',
+                style: theme.textTheme.labelMedium
+                    ?.copyWith(letterSpacing: 1.2, color: colorScheme.outline)),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +117,39 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // --- NEW: QR Invite Section ---
+                _buildSectionHeader(context, 'Invite Members'),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: colorScheme.primary.withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.qr_code_2_rounded, size: 40, color: colorScheme.primary),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Group QR Code',
+                                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                            Text('Let others scan to join',
+                                style: theme.textTheme.bodySmall),
+                          ],
+                        ),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: () => _showInviteQR(context, widget.groupId),
+                        child: const Text('Show'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+
                 _buildSectionHeader(context, 'Workflow Automation'),
                 Card(
                   elevation: 0,

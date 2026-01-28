@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:splitnest/presentation/screens/group/transaction_history_screen.dart';
-
 import '../../../core/format.dart';
 import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
+import '../../../domain/models/expense_calculator.dart';
 import '../../../domain/models/group.dart';
 import '../../../domain/models/group_member.dart';
 import '../../../domain/models/tx.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/empty_hint.dart';
 import 'group_balances_screen.dart';
+import 'transaction_history_screen.dart';
 
 class GroupDashboardScreen extends StatelessWidget {
   final String groupId;
@@ -19,8 +19,6 @@ class GroupDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final authRepo = context.watch<AuthRepo>();
     final myUid = authRepo.currentUser?.uid;
 
@@ -37,9 +35,18 @@ class GroupDashboardScreen extends StatelessWidget {
         return AppScaffold(
           title: group.name,
           actions: [
-            IconButton(icon: const Icon(Icons.analytics_outlined),
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => GroupBalancesScreen(groupId: groupId, groupName: group.name)))),
-            IconButton(icon: const Icon(Icons.settings_outlined),
+            // --- NEW MEMBERS BUTTON ---
+            IconButton(
+              icon: const Icon(Icons.people_alt_outlined),
+              tooltip: 'Members',
+              onPressed: () => context.push('/group/$groupId/members'),
+            ),
+            IconButton(
+                icon: const Icon(Icons.analytics_outlined),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (c) => GroupBalancesScreen(groupId: groupId, groupName: group.name)))),
+            IconButton(
+                icon: const Icon(Icons.settings_outlined),
                 onPressed: () => context.pushNamed('group_settings', pathParameters: {'groupId': groupId})),
           ],
           floatingActionButton: _buildFab(context),
@@ -53,6 +60,8 @@ class GroupDashboardScreen extends StatelessWidget {
                 stream: groupRepo.watchTx(groupId),
                 builder: (context, txSnap) {
                   final txs = txSnap.data ?? [];
+                  if (txs.isEmpty && members.isEmpty) return const EmptyHint('Getting things ready...');
+
                   return _DashboardBody(
                     groupId: groupId,
                     myUid: myUid,
@@ -78,8 +87,8 @@ class GroupDashboardScreen extends StatelessWidget {
         FloatingActionButton.small(
           heroTag: 'settle',
           onPressed: () => context.pushNamed('add_settlement', pathParameters: {'groupId': groupId}),
-          child: const Icon(Icons.handshake_outlined),
           backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+          child: const Icon(Icons.handshake_outlined),
         ),
         const SizedBox(height: 12),
         FloatingActionButton.extended(
@@ -115,43 +124,48 @@ class _DashboardBody extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // ... (Keep your existing calculation logic here) ...
-    // Assuming calculations for myNet, myPaid, myShare, totalToday, totalWeek are done here.
-    final myNet = 450.0; // Placeholder for logic
-    final totalToday = 120.0;
-    final totalWeek = 850.0;
+    final summary = ExpenseCalculator.calculateMemberSummary(transactions, myUid);
+
+    final now = DateTime.now();
+    double totalToday = 0;
+    double totalWeek = 0;
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+
+    for (var tx in transactions) {
+      if (DateUtils.isSameDay(tx.at, now)) totalToday += tx.amount;
+      if (tx.at.isAfter(weekStart)) totalWeek += tx.amount;
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- HERO BALANCE CARD ---
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
+              color: colorScheme.primaryContainer.withOpacity(0.7),
               borderRadius: BorderRadius.circular(28),
             ),
             child: Column(
               children: [
-                Text('YOUR NET BALANCE', style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.onPrimaryContainer, letterSpacing: 1.2)),
+                Text('YOUR NET BALANCE', style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 1.2)),
                 const SizedBox(height: 8),
                 Text(
-                  myNet >= 0 ? '+${Fmt.money(myNet)}' : Fmt.money(myNet),
+                  summary.netBalance >= 0 ? '+${Fmt.money(summary.netBalance)}' : Fmt.money(summary.netBalance),
                   style: theme.textTheme.displayMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: myNet >= 0 ? Colors.green.shade800 : colorScheme.error,
+                    color: summary.netBalance >= 0 ? Colors.green.shade800 : colorScheme.error,
                   ),
                 ),
                 const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _smallStat(context, 'Total Paid', 'PKR 1.2k'),
+                    _smallStat(context, 'Total Paid', Fmt.money(summary.totalPaid)),
                     Container(width: 1, height: 24, color: colorScheme.onPrimaryContainer.withOpacity(0.2)),
-                    _smallStat(context, 'Your Share', 'PKR 800'),
+                    _smallStat(context, 'Your Share', Fmt.money(summary.totalShare)),
                   ],
                 ),
               ],
@@ -160,7 +174,6 @@ class _DashboardBody extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // --- HORIZONTAL PERIOD TOTALS ---
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -174,39 +187,34 @@ class _DashboardBody extends StatelessWidget {
 
           const SizedBox(height: 32),
 
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Recent Activity', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-            TextButton(
-              onPressed: () {
-                // Option A: Using standard Navigator
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GroupTransactionHistoryScreen(groupId: groupId),
-                  ),
-                );
-
-                // Option B: Using GoRouter (If you have it mapped in main.dart)
-                // context.pushNamed('transaction_history', pathParameters: {'groupId': groupId});
-              },
-              child: const Text('View All'),
-            ),
-          ],
-        ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Recent Activity', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => GroupTransactionHistoryScreen(groupId: groupId))),
+                child: const Text('View All'),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
 
-          // --- CLEAN ACTIVITY FEED ---
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: transactions.take(10).length,
-            itemBuilder: (context, i) {
-              final tx = transactions[i];
-              return _activityTile(context, tx);
-            },
-          ),
+          if (transactions.isEmpty)
+            const Center(child: Padding(
+              padding: EdgeInsets.only(top: 20),
+              child: Text('No expenses yet. Tap "Add Expense" to start!'),
+            ))
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: transactions.take(10).length,
+              itemBuilder: (context, i) {
+                final tx = transactions[i];
+                return _activityTile(context, tx);
+              },
+            ),
         ],
       ),
     );
@@ -258,7 +266,11 @@ class _DashboardBody extends StatelessWidget {
         children: [
           CircleAvatar(
             backgroundColor: isSettlement ? Colors.teal.withOpacity(0.1) : colorScheme.primaryContainer,
-            child: Icon(isSettlement ? Icons.handshake_outlined : Icons.restaurant_outlined, size: 20, color: isSettlement ? Colors.teal : colorScheme.primary),
+            child: Icon(
+                isSettlement ? Icons.handshake_outlined : Icons.receipt_long_outlined,
+                size: 20,
+                color: isSettlement ? Colors.teal : colorScheme.primary
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -270,7 +282,13 @@ class _DashboardBody extends StatelessWidget {
               ],
             ),
           ),
-          Text(Fmt.money(tx.amount), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            Fmt.money(tx.amount),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isSettlement ? Colors.teal : null,
+            ),
+          ),
         ],
       ),
     );
