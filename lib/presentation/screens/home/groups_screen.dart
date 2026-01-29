@@ -22,7 +22,8 @@ class GroupsScreen extends StatelessWidget {
       title: 'Groups',
       actions: [
         IconButton(
-          onPressed: () => context.push('/app/groups/join'),
+          // ✅ FIXED
+          onPressed: () => context.push('/join-group'),
           icon: Icon(Icons.group_add_outlined, color: colorScheme.primary),
           tooltip: 'Join group',
         ),
@@ -30,7 +31,8 @@ class GroupsScreen extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(right: 12.0),
           child: IconButton.filledTonal(
-            onPressed: () => context.push('/app/groups/create'),
+            // ✅ FIXED
+            onPressed: () => context.push('/create-group'),
             icon: const Icon(Icons.add),
             tooltip: 'Create group',
           ),
@@ -56,9 +58,6 @@ class GroupsScreen extends StatelessWidget {
             itemCount: items.length,
             itemBuilder: (context, i) {
               final g = items[i];
-
-              // --- FIX: Pull count from the array length ---
-              // This ensures the count updates immediately when a new UID is added.
               final membersCount = g.memberUids.length;
 
               return Container(
@@ -89,7 +88,6 @@ class GroupsScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          // Custom Icon/Avatar Box
                           Container(
                             width: 64,
                             height: 64,
@@ -114,7 +112,6 @@ class GroupsScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 16),
-                          // Text Content
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,7 +124,6 @@ class GroupsScreen extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 6),
-                                // Modern Badge for member count
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
@@ -159,7 +155,6 @@ class GroupsScreen extends StatelessWidget {
                               ],
                             ),
                           ),
-                          // Action Arrow
                           Icon(
                             Icons.arrow_forward_ios_rounded,
                             size: 16,

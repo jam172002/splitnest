@@ -10,9 +10,14 @@ import '../presentation/screens/group/add_expense_screen.dart';
 import '../presentation/screens/group/add_settlement_screen.dart';
 import '../presentation/screens/home/join_group_screen.dart';
 import '../presentation/screens/home/create_group_screen.dart';
+import '../presentation/screens/not_found_screen.dart'; // 👈 NEW IMPORT
 
 final appRouter = GoRouter(
   initialLocation: '/splash',
+
+  // 👇 THIS FIXES YOUR ERROR SCREEN
+  errorBuilder: (context, state) => const NotFoundScreen(),
+
   routes: [
     GoRoute(
       path: '/splash',
@@ -36,6 +41,7 @@ final appRouter = GoRouter(
         ),
       ],
     ),
+
     // --- Group Specific Routes ---
     GoRoute(
       path: '/group/:groupId',
@@ -45,7 +51,6 @@ final appRouter = GoRouter(
         return GroupDashboardScreen(groupId: groupId);
       },
       routes: [
-        // This is the route for your Members Screen
         GoRoute(
           path: 'members',
           name: 'group_members',

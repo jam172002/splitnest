@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
+import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/busy_button.dart';
@@ -17,12 +19,10 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
   bool _busy = false;
   String? _err;
 
-  // Local state to track changes before saving
   bool? _requireApproval;
   bool? _adminBypass;
   String? _approvalMode;
 
-  // --- QR Invite Logic ---
   void _showInviteQR(BuildContext context, String groupId) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
@@ -78,7 +78,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
             const SizedBox(height: 24),
             Text('Group ID: $groupId',
                 style: theme.textTheme.labelMedium
-                    ?.copyWith(letterSpacing: 1.2, color: colorScheme.outline)),
+                    ?.copyWith(letterSpacing: 1.2)),
             const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
@@ -93,19 +93,67 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
     );
   }
 
+  Future<void> _confirmDelete(BuildContext context, GroupRepo repo) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Group'),
+        content: const Text(
+          'This will permanently delete the group and all its data.\n\nThis action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
+
+    try {
+      await repo.deleteGroup(widget.groupId);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      setState(() => _err = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final repo = context.read<GroupRepo>();
+    final auth = context.watch<AuthRepo>();
+    final uid = auth.currentUser?.uid ?? '';
 
     return StreamBuilder(
       stream: repo.watchGroup(widget.groupId),
       builder: (context, snap) {
         final g = snap.data;
-        if (g == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        if (g == null) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-        // Initialize local state from DB if not already set by user
+        final isAdmin = g.createdBy == uid;
+
         _requireApproval ??= g.requireApproval;
         _adminBypass ??= g.adminBypass;
         _approvalMode ??= g.approvalMode;
@@ -117,113 +165,84 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // --- NEW: QR Invite Section ---
                 _buildSectionHeader(context, 'Invite Members'),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: colorScheme.primary.withOpacity(0.2)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.qr_code_2_rounded, size: 40, color: colorScheme.primary),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Group QR Code',
-                                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                            Text('Let others scan to join',
-                                style: theme.textTheme.bodySmall),
-                          ],
-                        ),
-                      ),
-                      FilledButton.tonal(
-                        onPressed: () => _showInviteQR(context, widget.groupId),
-                        child: const Text('Show'),
-                      ),
-                    ],
-                  ),
+                FilledButton.tonal(
+                  onPressed: () => _showInviteQR(context, widget.groupId),
+                  child: const Text('Show QR Code'),
                 ),
-                const SizedBox(height: 32),
 
+                const SizedBox(height: 32),
                 _buildSectionHeader(context, 'Workflow Automation'),
-                Card(
-                  elevation: 0,
-                  color: colorScheme.surfaceContainerLow,
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        value: _requireApproval!,
-                        onChanged: (v) => setState(() => _requireApproval = v),
-                        title: const Text('Require Approvals'),
-                        subtitle: const Text('New entries must be verified before affecting balances.'),
-                        secondary: Icon(Icons.verified_user_outlined, color: colorScheme.primary),
-                      ),
-                      const Divider(indent: 64, endIndent: 16, height: 1),
-                      SwitchListTile(
-                        value: _adminBypass!,
-                        onChanged: (v) => setState(() => _adminBypass = v),
-                        title: const Text('Admin Bypass'),
-                        subtitle: const Text('Expenses added by admins skip the approval queue.'),
-                        secondary: Icon(Icons.bolt_rounded, color: Colors.amber.shade700),
-                      ),
-                    ],
-                  ),
+                SwitchListTile(
+                  value: _requireApproval!,
+                  onChanged: (v) => setState(() => _requireApproval = v),
+                  title: const Text('Require Approvals'),
                 ),
-                const SizedBox(height: 32),
+                SwitchListTile(
+                  value: _adminBypass!,
+                  onChanged: (v) => setState(() => _adminBypass = v),
+                  title: const Text('Admin Bypass'),
+                ),
 
+                const SizedBox(height: 32),
                 _buildSectionHeader(context, 'Approval Policy'),
-                const SizedBox(height: 8),
                 _buildModeOption(
                   context: context,
                   id: 'any',
                   title: 'Any Endorsement',
-                  desc: 'One person (any participant) can approve a transaction.',
+                  desc: 'One person can approve.',
                   icon: Icons.person_outline,
                 ),
                 _buildModeOption(
                   context: context,
                   id: 'all',
                   title: 'Full Consensus',
-                  desc: 'Every participant in the expense must approve it.',
+                  desc: 'Everyone must approve.',
                   icon: Icons.group_outlined,
                 ),
                 _buildModeOption(
                   context: context,
                   id: 'admin_only',
                   title: 'Admin Only',
-                  desc: 'Only group admins have the power to approve entries.',
+                  desc: 'Only admins approve.',
                   icon: Icons.admin_panel_settings_outlined,
                 ),
 
                 const SizedBox(height: 32),
+
+                if (isAdmin) ...[
+                  _buildSectionHeader(context, 'Danger Zone'),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colorScheme.error,
+                      foregroundColor: colorScheme.onError,
+                    ),
+                    onPressed: _busy
+                        ? null
+                        : () => _confirmDelete(context, repo),
+                    child: const Text('Delete Group'),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+
                 if (_err != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Text(_err!, style: TextStyle(color: colorScheme.error), textAlign: TextAlign.center),
+                  Text(
+                    _err!,
+                    style: TextStyle(color: colorScheme.error),
+                    textAlign: TextAlign.center,
                   ),
 
                 BusyButton(
                   busy: _busy,
                   onPressed: () async {
-                    setState(() { _busy = true; _err = null; });
-                    try {
-                      await repo.updateApprovalSettings(
-                        groupId: widget.groupId,
-                        requireApproval: _requireApproval!,
-                        adminBypass: _adminBypass!,
-                        approvalMode: _approvalMode!,
-                      );
-                      if (mounted) Navigator.of(context).pop();
-                    } catch (e) {
-                      setState(() => _err = e.toString());
-                    } finally {
-                      if (mounted) setState(() => _busy = false);
-                    }
+                    setState(() => _busy = true);
+                    await repo.updateApprovalSettings(
+                      groupId: widget.groupId,
+                      requireApproval: _requireApproval!,
+                      adminBypass: _adminBypass!,
+                      approvalMode: _approvalMode!,
+                    );
+                    if (mounted) Navigator.pop(context);
                   },
                   text: 'Save Changes',
                 ),
@@ -237,12 +256,10 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
 
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         title.toUpperCase(),
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          letterSpacing: 1.1,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -257,43 +274,12 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
     required IconData icon,
   }) {
     final isSelected = _approvalMode == id;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return GestureDetector(
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(desc),
+      trailing: isSelected ? const Icon(Icons.check) : null,
       onTap: () => setState(() => _approvalMode = id),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primaryContainer : colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.outline),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
-                  )),
-                  Text(desc, style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: isSelected ? colorScheme.onPrimaryContainer.withOpacity(0.8) : colorScheme.outline,
-                  )),
-                ],
-              ),
-            ),
-            if (isSelected) Icon(Icons.check_circle, color: colorScheme.primary),
-          ],
-        ),
-      ),
     );
   }
 }

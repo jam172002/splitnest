@@ -535,7 +535,7 @@ class GroupRepo {
     // 2. IMPORTANT: Update the main group document's array
     // This fixes the "Invisible on restart" and "Member Count" bugs
     batch.update(groupRef, {
-      'memberUids': FieldValue.arrayUnion([uid]),
+      'memberUids': FieldValue.arrayUnion([uid]), // This is what watchMyGroups looks for
     });
 
     await batch.commit();
@@ -554,4 +554,24 @@ class GroupRepo {
 
     return snapshot.docs.map((doc) => GroupTx.fromMap(doc.id, doc.data())).toList();
   }
+  // ────────────────────────────────────────────────
+  // Delete Group (ADMIN ONLY)
+  // ────────────────────────────────────────────────
+  Future<void> deleteGroup(String groupId) async {
+    final groupRef = _db.collection(FirestorePaths.groups).doc(groupId);
+
+    Future<void> deleteSubcollection(String name) async {
+      final snap = await groupRef.collection(name).get();
+      for (final doc in snap.docs) {
+        await doc.reference.delete();
+      }
+    }
+
+    await deleteSubcollection('members');
+    await deleteSubcollection('categories');
+    await deleteSubcollection('tx');
+
+    await groupRef.delete();
+  }
+
 }
