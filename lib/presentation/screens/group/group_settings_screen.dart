@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -126,14 +127,24 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
 
     try {
       await repo.deleteGroup(widget.groupId);
-      if (mounted) Navigator.of(context).pop();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Group deleted successfully')),
+      );
+
+      // Navigate to Groups home screen
+      context.go('/');
+
     } catch (e) {
-      setState(() => _err = e.toString());
+      if (mounted) {
+        setState(() => _err = e.toString());
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

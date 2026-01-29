@@ -34,20 +34,43 @@ class GroupDashboardScreen extends StatelessWidget {
 
         return AppScaffold(
           title: group.name,
+          // ────────────────────────────────
+          //  Added: custom back button + disable auto leading
+          // ────────────────────────────────
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back',
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/'); // fallback to groups list if no history
+              }
+            },
+          ),
           actions: [
-            // --- NEW MEMBERS BUTTON ---
             IconButton(
               icon: const Icon(Icons.people_alt_outlined),
               tooltip: 'Members',
               onPressed: () => context.push('/group/$groupId/members'),
             ),
             IconButton(
-                icon: const Icon(Icons.analytics_outlined),
-                onPressed: () => Navigator.push(context, MaterialPageRoute(
-                    builder: (c) => GroupBalancesScreen(groupId: groupId, groupName: group.name)))),
+              icon: const Icon(Icons.analytics_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (c) => GroupBalancesScreen(groupId: groupId, groupName: group.name),
+                ),
+              ),
+            ),
             IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => context.pushNamed('group_settings', pathParameters: {'groupId': groupId})),
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () => context.pushNamed(
+                'group_settings',
+                pathParameters: {'groupId': groupId},
+              ),
+            ),
           ],
           floatingActionButton: _buildFab(context),
           child: StreamBuilder<List<GroupMember>>(
@@ -86,14 +109,20 @@ class GroupDashboardScreen extends StatelessWidget {
       children: [
         FloatingActionButton.small(
           heroTag: 'settle',
-          onPressed: () => context.pushNamed('add_settlement', pathParameters: {'groupId': groupId}),
+          onPressed: () => context.pushNamed(
+            'add_settlement',
+            pathParameters: {'groupId': groupId},
+          ),
           backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
           child: const Icon(Icons.handshake_outlined),
         ),
         const SizedBox(height: 12),
         FloatingActionButton.extended(
           heroTag: 'add_expense',
-          onPressed: () => context.pushNamed('add_expense', pathParameters: {'groupId': groupId}),
+          onPressed: () => context.pushNamed(
+            'add_expense',
+            pathParameters: {'groupId': groupId},
+          ),
           label: const Text('Add Expense'),
           icon: const Icon(Icons.add),
         ),
@@ -150,7 +179,10 @@ class _DashboardBody extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Text('YOUR NET BALANCE', style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 1.2)),
+                Text(
+                  'YOUR NET BALANCE',
+                  style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 1.2),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   summary.netBalance >= 0 ? '+${Fmt.money(summary.netBalance)}' : Fmt.money(summary.netBalance),
@@ -164,7 +196,11 @@ class _DashboardBody extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _smallStat(context, 'Total Paid', Fmt.money(summary.totalPaid)),
-                    Container(width: 1, height: 24, color: colorScheme.onPrimaryContainer.withOpacity(0.2)),
+                    Container(
+                      width: 1,
+                      height: 24,
+                      color: colorScheme.onPrimaryContainer.withOpacity(0.2),
+                    ),
                     _smallStat(context, 'Your Share', Fmt.money(summary.totalShare)),
                   ],
                 ),
@@ -190,10 +226,17 @@ class _DashboardBody extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Recent Activity', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Recent Activity',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
               TextButton(
-                onPressed: () => Navigator.push(context, MaterialPageRoute(
-                    builder: (context) => GroupTransactionHistoryScreen(groupId: groupId))),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GroupTransactionHistoryScreen(groupId: groupId),
+                  ),
+                ),
                 child: const Text('View All'),
               ),
             ],
@@ -201,10 +244,12 @@ class _DashboardBody extends StatelessWidget {
           const SizedBox(height: 12),
 
           if (transactions.isEmpty)
-            const Center(child: Padding(
-              padding: EdgeInsets.only(top: 20),
-              child: Text('No expenses yet. Tap "Add Expense" to start!'),
-            ))
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(top: 20),
+                child: Text('No expenses yet. Tap "Add Expense" to start!'),
+              ),
+            )
           else
             ListView.builder(
               shrinkWrap: true,
@@ -244,7 +289,11 @@ class _DashboardBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: Theme.of(context).textTheme.labelSmall),
-          if (value != null) Text(value, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+          if (value != null)
+            Text(
+              value,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
         ],
       ),
     );
@@ -267,9 +316,9 @@ class _DashboardBody extends StatelessWidget {
           CircleAvatar(
             backgroundColor: isSettlement ? Colors.teal.withOpacity(0.1) : colorScheme.primaryContainer,
             child: Icon(
-                isSettlement ? Icons.handshake_outlined : Icons.receipt_long_outlined,
-                size: 20,
-                color: isSettlement ? Colors.teal : colorScheme.primary
+              isSettlement ? Icons.handshake_outlined : Icons.receipt_long_outlined,
+              size: 20,
+              color: isSettlement ? Colors.teal : colorScheme.primary,
             ),
           ),
           const SizedBox(width: 16),
@@ -277,8 +326,14 @@ class _DashboardBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(isSettlement ? 'Settlement' : (tx.category ?? 'Expense'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(Fmt.date(tx.at), style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  isSettlement ? 'Settlement' : (tx.category ?? 'Expense'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  Fmt.date(tx.at),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),

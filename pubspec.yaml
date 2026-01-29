@@ -33,9 +33,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/app_logo.jpg
+
+
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/images/app_logo.png" # Path to your high-res icon
-  adaptive_icon_background: "#ffffff" # For Android "squircle" icons
-  adaptive_icon_foreground: "assets/images/app_logo.png"
+  image_path: "assets/images/app_logo.jpg"   # forward slashes, no extra quotes or comments here

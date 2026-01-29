@@ -1,45 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-class AppShell extends StatefulWidget {
-  final Widget child;
-  const AppShell({super.key, required this.child});
+class AppShell extends StatelessWidget {
+  final StatefulNavigationShell navigationShell;
 
-  @override
-  State<AppShell> createState() => _AppShellState();
-}
-
-class _AppShellState extends State<AppShell> {
-  int _indexFromLoc(String loc) {
-    if (loc.startsWith('/app/personal')) return 1;
-    if (loc.startsWith('/app/profile')) return 2;
-    return 0;
-  }
-
-  void _go(int i) {
-    switch (i) {
-      case 0:
-        context.go('/app/groups');
-        break;
-      case 1:
-        context.go('/app/personal');
-        break;
-      case 2:
-        context.go('/app/profile');
-        break;
-    }
-  }
+  const AppShell({
+    super.key,
+    required this.navigationShell,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final loc = GoRouterState.of(context).matchedLocation;
-    final index = _indexFromLoc(loc);
-
     return Scaffold(
-      body: widget.child,
+      body: navigationShell,  // ← this replaces widget.child and enables state preservation
       bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: _go,
+        selectedIndex: navigationShell.currentIndex,
+        onDestinationSelected: (index) {
+          navigationShell.goBranch(
+            index,
+            initialLocation: index == navigationShell.currentIndex,
+          );
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.groups), label: 'Groups'),
           NavigationDestination(icon: Icon(Icons.person_outline), label: 'Personal'),
