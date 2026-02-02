@@ -121,7 +121,7 @@ final appRouter = GoRouter(
                 ),
                 GoRoute(
                   path: 'add-expense',
-                  name: 'add_group_expense',
+                  name: 'add_expense',
                   builder: (context, state) => AddExpenseScreen(
                     groupId: state.pathParameters['groupId']!,
                   ),

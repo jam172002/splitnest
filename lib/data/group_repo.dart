@@ -573,5 +573,35 @@ class GroupRepo {
 
     await groupRef.delete();
   }
+  Future<void> resetGroupBalances(String groupId) async {
+    final batch = FirebaseFirestore.instance.batch();
+
+    // 1. Delete all transactions (expenses + settlements)
+    final txSnapshot = await FirebaseFirestore.instance
+        .collection('groups')
+        .doc(groupId)
+        .collection('tx')
+        .get();
+
+    for (var doc in txSnapshot.docs) {
+      batch.delete(doc.reference);
+    }
+
+    // 2. Optional: reset any group-level summary fields if you store them
+    // (if you have totalPaid, totalShare etc. in group doc)
+    batch.update(
+      FirebaseFirestore.instance.collection('groups').doc(groupId),
+      {
+        'lastResetAt': FieldValue.serverTimestamp(),
+        // if you have other accumulators:
+        // 'totalExpenses': 0,
+        // 'totalSettlements': 0,
+        // etc.
+      },
+    );
+
+    // 3. Execute batch (atomic)
+    await batch.commit();
+  }
 
 }

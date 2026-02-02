@@ -234,8 +234,66 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                     child: const Text('Delete Group'),
                   ),
                   const SizedBox(height: 24),
-                ],
 
+                  // ────────────────────────────────────────────────
+                  //  PASTE THE NEW RESET BUTTON BLOCK HERE
+                  // ────────────────────────────────────────────────
+                  const SizedBox(height: 16),
+                  _buildSectionHeader(context, 'Reset Group'),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.refresh, color: Colors.orange),
+                    label: const Text('Clear All Expenses & Reset Balances'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.orange.withOpacity(0.15),
+                      foregroundColor: Colors.orange.shade800,
+                    ),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Reset Group Balances'),
+                          content: const Text(
+                            'This will delete all expense and settlement history and reset balances to zero.\n\n'
+                                'The group name, members, and ID remain unchanged.\n\n'
+                                'Only do this after everyone has settled payments outside the app.\n\n'
+                                'This action cannot be undone.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Reset Group'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirmed != true) return;
+
+                      setState(() => _busy = true);
+
+                      try {
+                        await repo.resetGroupBalances(widget.groupId); // You need to implement this method
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Group has been reset successfully')),
+                          );
+                          context.go('/group/${widget.groupId}'); // or context.go('/') if you prefer
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          setState(() => _err = 'Failed to reset: $e');
+                        }
+                      } finally {
+                        if (mounted) setState(() => _busy = false);
+                      }
+                    },
+                  ),
+                ],
                 if (_err != null)
                   Text(
                     _err!,
@@ -293,4 +351,5 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
       onTap: () => setState(() => _approvalMode = id),
     );
   }
+
 }

@@ -40,7 +40,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     final loggedIn = auth.currentUser != null;
 
     if (loggedIn) {
-      context.go('/app/groups');
+      context.go('/');
     } else {
       context.go('/login');
     }

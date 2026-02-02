@@ -41,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await context.read<AuthRepo>().login(_email.text.trim(), _pass.text.trim());
       final uid = context.read<AuthRepo>().currentUser!.uid;
       await context.read<NotificationsRepo>().initAndSaveToken(uid);
-      if (mounted) context.go('/app/groups');
+      if (mounted) context.go('/');
     } catch (e) {
       // Friendly error mapping
       setState(() => _err = "Invalid email or password");
