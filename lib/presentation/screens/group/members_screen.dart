@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
 import '../../../domain/models/group_member.dart';
 import '../../widgets/app_scaffold.dart';
@@ -13,14 +14,25 @@ class MembersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<GroupRepo>();
+    final authRepo = context.read<AuthRepo>();
+    final myUid = authRepo.currentUser?.uid ?? '';
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return AppScaffold(
       title: 'Group Members',
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddMemberSheet(context, repo),
-        child: const Icon(Icons.person_add_rounded),
+      floatingActionButton: FutureBuilder<String>(
+        future: repo.roleOf(groupId, myUid),
+        builder: (context, snapshot) {
+          if (snapshot.hasData && snapshot.data == 'admin') {
+            return FloatingActionButton(
+              onPressed: () => _showAddMemberSheet(context, repo),
+              child: const Icon(Icons.person_add_rounded),
+            );
+          }
+          return const SizedBox.shrink();
+        },
       ),
       child: StreamBuilder<List<GroupMember>>(
         stream: repo.watchMembers(groupId),
@@ -60,34 +72,33 @@ class MembersScreen extends StatelessWidget {
                   ),
                   title: Text(m.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('Joined ${m.joinedAt.day}/${m.joinedAt.month}/${m.joinedAt.year}'),
-                  // --- Added Delete Button ---
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // 1. The existing Role Badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isAdmin ? colorScheme.tertiaryContainer : colorScheme.surfaceVariant,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            m.role.toUpperCase(),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: isAdmin ? colorScheme.onTertiaryContainer : colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.bold,
-                            ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Role Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isAdmin ? colorScheme.tertiaryContainer : colorScheme.surfaceVariant,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          m.role.toUpperCase(),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: isAdmin ? colorScheme.onTertiaryContainer : colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
+                      ),
 
-                        // 2. The NEW Delete Button (Hidden for Admins for safety)
-                        if (!isAdmin)
-                          IconButton(
-                            icon: Icon(Icons.person_remove_outlined, color: colorScheme.error),
-                            onPressed: () => _confirmDelete(context, repo, m.id, m.name),
-                          ),
-                      ],
-                    ),
+                      // Delete Button (Hidden for Admins)
+                      if (!isAdmin)
+                        IconButton(
+                          icon: Icon(Icons.person_remove_outlined, color: colorScheme.error),
+                          onPressed: () => _confirmDelete(context, repo, m.id, m.name),
+                        ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -120,69 +131,59 @@ class MembersScreen extends StatelessWidget {
 
   void _showAddMemberSheet(BuildContext context, GroupRepo repo) {
     final nameController = TextEditingController();
-    String role = 'member';
+    const role = 'member';  // ← Hardcoded to 'member' only
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (ctx) => StatefulBuilder(
-          builder: (context, setModalState) {
-            bool isBusy = false;
+        builder: (context, setModalState) {
+          bool isBusy = false;
 
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20, right: 20, top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Add New Member', style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: nameController,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Full Name',
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 20, right: 20, top: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Add New Member', style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    prefixIcon: Icon(Icons.person_outline),
                   ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: role,
-                    decoration: const InputDecoration(labelText: 'Assign Role', prefixIcon: Icon(Icons.shield_outlined)),
-                    items: const [
-                      DropdownMenuItem(value: 'member', child: Text('Member')),
-                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                    ],
-                    onChanged: (v) => setModalState(() => role = v!),
-                  ),
-                  const SizedBox(height: 24),
-                  BusyButton(
-                    busy: isBusy,
-                    onPressed: () async {
-                      if (nameController.text.isEmpty) return;
+                ),
+                const SizedBox(height: 24),
+                BusyButton(
+                  busy: isBusy,
+                  onPressed: () async {
+                    if (nameController.text.isEmpty) return;
 
-                      setModalState(() => isBusy = true);
-                      final virtualUid = DateTime.now().millisecondsSinceEpoch.toString();
+                    setModalState(() => isBusy = true);
+                    final virtualUid = DateTime.now().millisecondsSinceEpoch.toString();
 
-                      await repo.addMember(
-                        groupId: groupId, // Fixed 'widget' error
-                        name: nameController.text,
-                        role: role,
-                        uid: virtualUid, // Satisfies new required parameter
-                      );
+                    await repo.addMember(
+                      groupId: groupId,
+                      name: nameController.text,
+                      role: role,
+                      uid: virtualUid,
+                    );
 
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                    text: 'Add to Group',
-                  ),
-                ],
-              ),
-            );
-          }
+                    if (context.mounted) Navigator.pop(context);
+                  },
+                  text: 'Add to Group',
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

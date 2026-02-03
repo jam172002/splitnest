@@ -3,12 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class GroupMember {
   final String id;          // Firestore document ID
   final String name;
+  final String? email;      // ← NEW: optional email
   final String role;        // 'admin' or 'member' (or others in future)
   final DateTime joinedAt;
 
   GroupMember({
     required this.id,
     required this.name,
+    this.email,             // ← NEW: optional
     required this.role,
     required this.joinedAt,
   });
@@ -20,6 +22,7 @@ class GroupMember {
     return GroupMember(
       id: id,
       name: _parseString(map['name'], defaultValue: 'Unknown Member'),
+      email: map['email'] as String?,  // ← NEW: read email if present
       role: _parseString(map['role'], defaultValue: 'member'),
       joinedAt: _parseDateTime(map['joinedAt']) ?? DateTime.now(),
     );
@@ -71,6 +74,7 @@ class GroupMember {
   Map<String, dynamic> toMap() {
     return {
       'name': name.trim(),
+      'email': email,          // ← NEW: include email if present
       'role': role.trim().toLowerCase(),
       'joinedAt': Timestamp.fromDate(joinedAt),
     };
@@ -103,6 +107,6 @@ class GroupMember {
   // Optional: for easier debugging
   @override
   String toString() {
-    return 'GroupMember(id: $id, name: "$name", role: $role, joined: $joinedAt)';
+    return 'GroupMember(id: $id, name: "$name", email: $email, role: $role, joined: $joinedAt)';
   }
 }

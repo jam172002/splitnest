@@ -7,13 +7,8 @@ class NotificationsRepo {
   final _msg = FirebaseMessaging.instance;
 
   Future<void> initAndSaveToken(String uid) async {
-    // Web requires notification permission
     await _msg.requestPermission();
-
-    // iOS needs APNS; Android ok; Web will return a token if configured
-    final token = await _msg.getToken(
-      vapidKey: null, // optional for web; if you use VAPID, put it here
-    );
+    final token = await _msg.getToken();
 
     if (token == null || token.isEmpty) return;
 
@@ -23,7 +18,6 @@ class NotificationsRepo {
       'updatedAt': DateTime.now().toIso8601String(),
     });
 
-    // Keep token updated
     _msg.onTokenRefresh.listen((newToken) async {
       await _db.doc('users/$uid/fcmTokens/$newToken').set({
         'token': newToken,
@@ -34,7 +28,6 @@ class NotificationsRepo {
   }
 
   String _platform() {
-    // Web won't have Platform.*
     try {
       if (Platform.isAndroid) return 'android';
       if (Platform.isIOS) return 'ios';
@@ -43,5 +36,43 @@ class NotificationsRepo {
       if (Platform.isLinux) return 'linux';
     } catch (_) {}
     return 'web';
+  }
+
+  // ────────────────────────────────
+  //  NEW: In-App "New Expense" Alert
+  // ────────────────────────────────
+
+  /// Called when user opens the group dashboard
+  Future<void> markExpenseAsSeen(String groupId, String latestTxId, String uid) async {
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('seenExpenses')
+        .doc(groupId)
+        .set({'latestSeenTxId': latestTxId}, SetOptions(merge: true));
+  }
+
+  /// Check if there are new expenses user hasn't seen yet
+  Future<bool> hasUnseenExpenses(String groupId, String latestTxId, String uid) async {
+    final doc = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('seenExpenses')
+        .doc(groupId)
+        .get();
+
+    if (!doc.exists) {
+      print('Has unseen for $groupId: true (no previous seen record)');
+      return true; // first time → show banner
+    }
+
+    final lastSeen = doc.data()?['latestSeenTxId'] as String?;
+
+    final hasUnseen = lastSeen != latestTxId;
+
+    // ← PUT THE DEBUG PRINT RIGHT HERE
+    print('Has unseen for $groupId: $hasUnseen (lastSeen: $lastSeen, latest: $latestTxId)');
+
+    return hasUnseen;
   }
 }

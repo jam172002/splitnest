@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/format.dart';
 import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
+import '../../../data/notifications_repo.dart';
 import '../../../domain/models/expense_calculator.dart';
 import '../../../domain/models/group.dart';
 import '../../../domain/models/group_member.dart';
@@ -25,6 +26,7 @@ class GroupDashboardScreen extends StatelessWidget {
     if (myUid == null) return const Scaffold(body: Center(child: Text('Please log in')));
 
     final groupRepo = context.read<GroupRepo>();
+    final notificationsRepo = context.read<NotificationsRepo>();
 
     return StreamBuilder<Group>(
       stream: groupRepo.watchGroup(groupId),
@@ -34,9 +36,6 @@ class GroupDashboardScreen extends StatelessWidget {
 
         return AppScaffold(
           title: group.name,
-          // ────────────────────────────────
-          //  Added: custom back button + disable auto leading
-          // ────────────────────────────────
           automaticallyImplyLeading: false,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
@@ -84,6 +83,12 @@ class GroupDashboardScreen extends StatelessWidget {
                 builder: (context, txSnap) {
                   final txs = txSnap.data ?? [];
                   if (txs.isEmpty && members.isEmpty) return const EmptyHint('Getting things ready...');
+
+                  // Automatically mark latest expense as seen when dashboard loads
+                  if (txs.isNotEmpty) {
+                    final latestTxId = txs.first.id; // newest expense (assuming ordered descending)
+                    notificationsRepo.markExpenseAsSeen(groupId, latestTxId, myUid);
+                  }
 
                   return _DashboardBody(
                     groupId: groupId,
@@ -152,6 +157,7 @@ class _DashboardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final notificationsRepo = context.read<NotificationsRepo>();
 
     final summary = ExpenseCalculator.calculateMemberSummary(transactions, myUid);
 
@@ -165,106 +171,153 @@ class _DashboardBody extends StatelessWidget {
       if (tx.at.isAfter(weekStart)) totalWeek += tx.amount;
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  'YOUR NET BALANCE',
-                  style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 1.2),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  summary.netBalance >= 0 ? '+${Fmt.money(summary.netBalance)}' : Fmt.money(summary.netBalance),
-                  style: theme.textTheme.displayMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: summary.netBalance >= 0 ? Colors.green.shade800 : colorScheme.error,
+    return FutureBuilder<bool>(
+      future: transactions.isEmpty
+          ? Future.value(false)
+          : notificationsRepo.hasUnseenExpenses(groupId, transactions.first.id, myUid),
+      builder: (context, snapshot) {
+        final hasUnseen = snapshot.data ?? false;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ──── IN-APP NOTIFICATION BANNER ────
+              if (hasUnseen)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: colorScheme.primary.withOpacity(0.6)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.notifications_active_rounded, color: colorScheme.primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'New expense added in this group!',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, color: colorScheme.onPrimaryContainer),
+                        onPressed: () {
+                          // Mark as seen to hide banner
+                          if (transactions.isNotEmpty) {
+                            notificationsRepo.markExpenseAsSeen(groupId, transactions.first.id, myUid);
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+
+              // Your original content (net balance card) - unchanged
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: Column(
                   children: [
-                    _smallStat(context, 'Total Paid', Fmt.money(summary.totalPaid)),
-                    Container(
-                      width: 1,
-                      height: 24,
-                      color: colorScheme.onPrimaryContainer.withOpacity(0.2),
+                    Text(
+                      'YOUR NET BALANCE',
+                      style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 1.2),
                     ),
-                    _smallStat(context, 'Your Share', Fmt.money(summary.totalShare)),
+                    const SizedBox(height: 8),
+                    Text(
+                      summary.netBalance >= 0 ? '+${Fmt.money(summary.netBalance)}' : Fmt.money(summary.netBalance),
+                      style: theme.textTheme.displayMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: summary.netBalance >= 0 ? Colors.green.shade800 : colorScheme.error,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _smallStat(context, 'Total Paid', Fmt.money(summary.totalPaid)),
+                        Container(
+                          width: 1,
+                          height: 24,
+                          color: colorScheme.onPrimaryContainer.withOpacity(0.2),
+                        ),
+                        _smallStat(context, 'Your Share', Fmt.money(summary.totalShare)),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _periodChip(context, 'Today', Fmt.money(totalToday)),
-                _periodChip(context, 'This Week', Fmt.money(totalWeek)),
-                _periodChip(context, 'Invite Code: $groupId', null, isInvite: true),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 32),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Recent Activity',
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
-              TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GroupTransactionHistoryScreen(groupId: groupId),
-                  ),
+
+              const SizedBox(height: 24),
+
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _periodChip(context, 'Today', Fmt.money(totalToday)),
+                    _periodChip(context, 'This Week', Fmt.money(totalWeek)),
+                    _periodChip(context, 'Invite Code: $groupId', null, isInvite: true),
+                  ],
                 ),
-                child: const Text('View All'),
               ),
+
+              const SizedBox(height: 32),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Recent Activity',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => GroupTransactionHistoryScreen(groupId: groupId),
+                      ),
+                    ),
+                    child: const Text('View All'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              if (transactions.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 20),
+                    child: Text('No expenses yet. Tap "Add Expense" to start!'),
+                  ),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: transactions.take(10).length,
+                  itemBuilder: (context, i) {
+                    final tx = transactions[i];
+                    return _activityTile(context, tx);
+                  },
+                ),
             ],
           ),
-          const SizedBox(height: 12),
-
-          if (transactions.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.only(top: 20),
-                child: Text('No expenses yet. Tap "Add Expense" to start!'),
-              ),
-            )
-          else
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: transactions.take(10).length,
-              itemBuilder: (context, i) {
-                final tx = transactions[i];
-                return _activityTile(context, tx);
-              },
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 
+  // Your existing helper methods (unchanged)
   Widget _smallStat(BuildContext context, String label, String value) {
     final theme = Theme.of(context);
     return Column(
@@ -303,6 +356,8 @@ class _DashboardBody extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isSettlement = tx.type == 'settlement';
 
+    final payerName = memberMap[tx.paidBy]?.name ?? 'Unknown';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -331,7 +386,7 @@ class _DashboardBody extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  Fmt.date(tx.at),
+                  '$payerName • ${Fmt.date(tx.at)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

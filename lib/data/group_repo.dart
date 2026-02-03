@@ -42,11 +42,15 @@ class GroupRepo {
       id: ref.id,
       name: name,
       createdBy: uid,
-      memberUids: [uid], // ADD THIS LINE: Initialize with the creator's UID
+      memberUids: [uid],
       requireApproval: requireApproval,
       adminBypass: adminBypass,
       approvalMode: approvalMode,
     );
+
+    // Fetch creator's name from users collection
+    final userDoc = await _db.collection('users').doc(uid).get();
+    final creatorName = userDoc.data()?['name'] as String? ?? email.split('@')[0];
 
     await _db.runTransaction((tx) async {
       tx.set(ref, {
@@ -59,7 +63,7 @@ class GroupRepo {
         ref.collection('members').doc(uid),
         GroupMember(
           id: uid,
-          name: email.split('@')[0], // fallback name from email
+          name: creatorName,  // ← Now uses real name
           role: 'admin',
           joinedAt: DateTime.now(),
         ).toMap(),
@@ -93,12 +97,16 @@ class GroupRepo {
       throw Exception('Group not found. Please check the invite code.');
     }
 
+    // Fetch user's name from users collection
+    final userDoc = await _db.collection('users').doc(uid).get();
+    final userName = userDoc.data()?['name'] as String? ?? email.split('@')[0];
+
     await _db.runTransaction((tx) async {
       tx.set(
         groupRef.collection('members').doc(uid),
         GroupMember(
           id: uid,
-          name: email.split('@')[0], // fallback name
+          name: userName,  // ← Now uses real name
           role: 'member',
           joinedAt: DateTime.now(),
         ).toMap(),
@@ -447,7 +455,6 @@ class GroupRepo {
     return balances;
   }
 
-
   Future<List<MemberBalance>> getMemberBalances(String groupId) async {
     final netBalances = await calculateMemberBalances(groupId);
 
@@ -481,6 +488,7 @@ class GroupRepo {
 
     return result;
   }
+
   Future<void> removeMember(String groupId, String uid) async {
     final groupRef = _db.collection('groups').doc(groupId);
     final memberRef = groupRef.collection('members').doc(uid);
@@ -497,11 +505,11 @@ class GroupRepo {
 
     await batch.commit();
   }
+
   // ────────────────────────────────────────────────
   // Member Transaction Details (for detail screen)
   // ────────────────────────────────────────────────
 
-  /// Returns all expenses where this member was the payer
   Future<List<GroupTx>> getExpensesPaidByMember(String groupId, String memberId) async {
     final snapshot = await _db
         .collection(FirestorePaths.groups)
@@ -514,6 +522,7 @@ class GroupRepo {
 
     return snapshot.docs.map((doc) => GroupTx.fromMap(doc.id, doc.data())).toList();
   }
+
   Future<void> addMember({
     required String groupId,
     required String name,
@@ -533,15 +542,13 @@ class GroupRepo {
     });
 
     // 2. IMPORTANT: Update the main group document's array
-    // This fixes the "Invisible on restart" and "Member Count" bugs
     batch.update(groupRef, {
-      'memberUids': FieldValue.arrayUnion([uid]), // This is what watchMyGroups looks for
+      'memberUids': FieldValue.arrayUnion([uid]),
     });
 
     await batch.commit();
   }
 
-  /// Returns all expenses where this member was a participant (they owe a share)
   Future<List<GroupTx>> getExpensesParticipatedByMember(String groupId, String memberId) async {
     final snapshot = await _db
         .collection(FirestorePaths.groups)
@@ -554,6 +561,7 @@ class GroupRepo {
 
     return snapshot.docs.map((doc) => GroupTx.fromMap(doc.id, doc.data())).toList();
   }
+
   // ────────────────────────────────────────────────
   // Delete Group (ADMIN ONLY)
   // ────────────────────────────────────────────────
@@ -573,6 +581,7 @@ class GroupRepo {
 
     await groupRef.delete();
   }
+
   Future<void> resetGroupBalances(String groupId) async {
     final batch = FirebaseFirestore.instance.batch();
 
@@ -587,21 +596,14 @@ class GroupRepo {
       batch.delete(doc.reference);
     }
 
-    // 2. Optional: reset any group-level summary fields if you store them
-    // (if you have totalPaid, totalShare etc. in group doc)
+    // 2. Optional: reset any group-level summary fields
     batch.update(
       FirebaseFirestore.instance.collection('groups').doc(groupId),
       {
         'lastResetAt': FieldValue.serverTimestamp(),
-        // if you have other accumulators:
-        // 'totalExpenses': 0,
-        // 'totalSettlements': 0,
-        // etc.
       },
     );
 
-    // 3. Execute batch (atomic)
     await batch.commit();
   }
-
 }

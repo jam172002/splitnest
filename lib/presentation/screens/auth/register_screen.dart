@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../data/auth_repo.dart';
+import '../../../data/notifications_repo.dart';
 import '../../widgets/busy_button.dart';
 import '../../widgets/app_scaffold.dart';
 
@@ -14,6 +17,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final _name = TextEditingController();    // ← NEW
   final _email = TextEditingController();
   final _pass = TextEditingController();
   bool _busy = false;
@@ -21,14 +25,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
+    _name.dispose();    // ← NEW
     _email.dispose();
     _pass.dispose();
     super.dispose();
   }
 
   Future<void> _register() async {
-    if (_email.text.isEmpty || _pass.text.isEmpty) {
-      setState(() => _err = "Please enter both email and password");
+    if (_name.text.trim().isEmpty || _email.text.trim().isEmpty || _pass.text.trim().isEmpty) {
+      setState(() => _err = "Please fill in all fields");
       return;
     }
 
@@ -36,11 +41,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _busy = true;
       _err = null;
     });
+
     try {
-      await context.read<AuthRepo>().register(_email.text.trim(), _pass.text.trim());
-      if (mounted) context.go('/app/groups');
+      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: _email.text.trim(),
+        password: _pass.text.trim(),
+      );
+
+      // Save name to Firebase Auth display name
+      await credential.user?.updateDisplayName(_name.text.trim());
+
+      // Save to Firestore users collection
+      await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
+        'name': _name.text.trim(),
+        'email': _email.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Your existing notification setup
+      final uid = credential.user!.uid;
+      await context.read<NotificationsRepo>().initAndSaveToken(uid);
+
+      if (mounted) context.go('/');
     } catch (e) {
-      setState(() => _err = "Registration failed. Please check your details.");
+      setState(() => _err = "Registration failed: ${e.toString().split(']').last}");
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -52,7 +76,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final colorScheme = theme.colorScheme;
 
     return AppScaffold(
-      title: '', // Keep app bar clean for auth screens
+      title: '',
       child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -60,15 +84,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- Header Section ---
+              // Brand Section
               Icon(
-                Icons.person_add_rounded,
+                Icons.home_work_rounded,
                 size: 80,
                 color: colorScheme.primary,
               ),
               const SizedBox(height: 16),
               Text(
-                'Join SplitNest',
+                'SplitNest',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.headlineLarge?.copyWith(
                   fontWeight: FontWeight.bold,
@@ -76,9 +100,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   letterSpacing: -1,
                 ),
               ),
-              const SizedBox(height: 8),
               Text(
-                'Start splitting expenses with ease.',
+                'Fair splitting, simple living.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
@@ -86,17 +109,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 48),
 
-              // --- Form Fields ---
+              // ──── NEW NAME FIELD ────
+              TextField(
+                controller: _name,
+                keyboardType: TextInputType.name,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+              ),
+              const SizedBox(height: 16),
+
               TextField(
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Email Address',
                   prefixIcon: Icon(Icons.email_outlined),
                 ),
               ),
               const SizedBox(height: 16),
+
               TextField(
                 controller: _pass,
                 obscureText: true,
@@ -104,11 +138,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   labelText: 'Password',
                   prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
-                onSubmitted: (_) => _register(),
               ),
+
               const SizedBox(height: 24),
 
-              // --- Error Display ---
               if (_err != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -120,13 +153,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
 
               BusyButton(
-                  busy: _busy,
-                  onPressed: _register,
-                  text: 'Create Account'
+                busy: _busy,
+                onPressed: _register,
+                text: 'Sign Up',
               ),
+
               const SizedBox(height: 16),
 
-              // --- Back to Login ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -136,7 +169,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   TextButton(
                     onPressed: () => context.go('/login'),
-                    child: const Text('Sign In'),
+                    child: const Text('Sign in'),
                   ),
                 ],
               ),
