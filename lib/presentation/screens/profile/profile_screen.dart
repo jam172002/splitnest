@@ -1,22 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../../data/auth_repo.dart';
+import '../../../theme/theme_mode_controller.dart';
 import '../../widgets/app_scaffold.dart';
 
-// ✅ Replace this with your real theme controller/provider.
-// Example expectation:
-// class ThemeModeController extends ChangeNotifier {
-//   ThemeMode mode = ThemeMode.system;
-//   void toggle() {
-//     mode = (mode == ThemeMode.dark) ? ThemeMode.light : ThemeMode.dark;
-//     notifyListeners();
-//   }
-// }
-class ThemeModeController {
-  void toggle() {}
-}
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -43,23 +31,10 @@ class ProfileScreen extends StatelessWidget {
         // ✅ Dark/Light toggle button (hook to your theme controller)
         IconButton(
           tooltip: 'Toggle theme',
-          onPressed: () {
-            // Replace with your implementation:
-            // context.read<ThemeModeController>().toggle();
-            try {
-              context.read<ThemeModeController>().toggle();
-            } catch (_) {
-              _showInfoDialog(
-                context,
-                title: 'Theme toggle not wired',
-                message:
-                'Connect ThemeModeController (or your theme provider) and call toggle().',
-              );
-            }
-          },
+          onPressed: () => context.read<ThemeModeController>().toggleDarkLight(),
           icon: Icon(
-            Icons.dark_mode_rounded,
-            color: cs.onSurface.withValues(alpha: 0.75),
+            Icons.brightness_6_rounded,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75),
           ),
         ),
         const SizedBox(width: 6),
