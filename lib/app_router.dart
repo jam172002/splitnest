@@ -22,38 +22,28 @@ import '../presentation/screens/not_found_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/splash',
-  debugLogDiagnostics: true, // helpful during development
-
-  // Custom 404 screen
+  debugLogDiagnostics: true,
   errorBuilder: (context, state) => const NotFoundScreen(),
 
   redirect: (BuildContext context, GoRouterState state) {
-    final location = state.uri.path;  // better than toString()
+    final location = state.uri.path;
     final authRepo = Provider.of<AuthRepo>(context, listen: false);
     final isLoggedIn = authRepo.currentUser != null;
 
-    // 1. Splash handling
     if (location.startsWith('/splash')) {
       return isLoggedIn ? '/' : '/login';
     }
 
-    // 2. Explicitly allow public auth routes
     final publicAuthPaths = ['/login', '/register'];
     if (publicAuthPaths.contains(location)) {
-      if (isLoggedIn) {
-        return '/'; // already logged in → go home
-      }
-      return null; // allow access
+      if (isLoggedIn) return '/';
+      return null;
     }
 
-    // 3. Protect all other app routes
-    if (!isLoggedIn) {
-      return '/login';
-    }
-
-    // 4. If logged in and trying to access auth pages → already handled above
+    if (!isLoggedIn) return '/login';
     return null;
   },
+
   routes: [
     // Public routes
     GoRoute(
@@ -69,81 +59,28 @@ final appRouter = GoRouter(
       builder: (context, state) => const RegisterScreen(),
     ),
 
-    // ───────────────────────────────────────────────────────────────
-    // Main authenticated shell with bottom navigation
-    // ───────────────────────────────────────────────────────────────
+    // ✅ Shell should contain ONLY 3 tab root screens
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
         return AppShell(navigationShell: navigationShell);
       },
       branches: [
-        // Branch 0 ── Groups Tab
         StatefulShellBranch(
           routes: [
             GoRoute(
               path: '/',
               builder: (context, state) => const GroupsScreen(),
             ),
-
-            // Group detail + nested routes
-            GoRoute(
-              path: '/group/:groupId',
-              name: 'group_dashboard',
-              builder: (context, state) => GroupDashboardScreen(
-                groupId: state.pathParameters['groupId']!,
-              ),
-              routes: [
-                GoRoute(
-                  path: 'members',
-                  name: 'group_members',
-                  builder: (context, state) => MembersScreen(
-                    groupId: state.pathParameters['groupId']!,
-                  ),
-                ),
-                GoRoute(
-                  path: 'settings',
-                  name: 'group_settings',
-                  builder: (context, state) => GroupSettingsScreen(
-                    groupId: state.pathParameters['groupId']!,
-                  ),
-                ),
-                GoRoute(
-                  path: 'add-expense',
-                  name: 'add_expense',
-                  builder: (context, state) => AddExpenseScreen(
-                    groupId: state.pathParameters['groupId']!,
-                  ),
-                ),
-                GoRoute(
-                  path: 'add-settlement',
-                  name: 'add_settlement',
-                  builder: (context, state) => AddSettlementScreen(
-                    groupId: state.pathParameters['groupId']!,
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
-
-        // Branch 1 ── Personal Tab
         StatefulShellBranch(
           routes: [
             GoRoute(
               path: '/app/personal',
               builder: (context, state) => const PersonalHomeScreen(),
-              routes: [
-                GoRoute(
-                  path: 'add',
-                  name: 'add_personal_expense',
-                  builder: (context, state) => const AddPersonalTxScreen(),
-                ),
-              ],
             ),
           ],
         ),
-
-        // Branch 2 ── Profile Tab
         StatefulShellBranch(
           routes: [
             GoRoute(
@@ -155,7 +92,8 @@ final appRouter = GoRouter(
       ],
     ),
 
-    // ✅ OUTSIDE the shell → bottom bar will NOT show
+    // ✅ EVERYTHING ELSE OUTSIDE SHELL (no bottom bar)
+
     GoRoute(
       path: '/create-group',
       name: 'create_group',
@@ -165,6 +103,50 @@ final appRouter = GoRouter(
       path: '/join-group',
       name: 'join_group',
       builder: (context, state) => const JoinGroupScreen(),
+    ),
+
+    GoRoute(
+      path: '/group/:groupId',
+      name: 'group_dashboard',
+      builder: (context, state) => GroupDashboardScreen(
+        groupId: state.pathParameters['groupId']!,
+      ),
+      routes: [
+        GoRoute(
+          path: 'members',
+          name: 'group_members',
+          builder: (context, state) => MembersScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+        GoRoute(
+          path: 'settings',
+          name: 'group_settings',
+          builder: (context, state) => GroupSettingsScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+        GoRoute(
+          path: 'add-expense',
+          name: 'add_expense',
+          builder: (context, state) => AddExpenseScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+        GoRoute(
+          path: 'add-settlement',
+          name: 'add_settlement',
+          builder: (context, state) => AddSettlementScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+      ],
+    ),
+
+    GoRoute(
+      path: '/app/personal/add',
+      name: 'add_personal_expense',
+      builder: (context, state) => const AddPersonalTxScreen(),
     ),
   ],
 );
