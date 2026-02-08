@@ -83,18 +83,6 @@ final appRouter = GoRouter(
             GoRoute(
               path: '/',
               builder: (context, state) => const GroupsScreen(),
-              routes: [
-                GoRoute(
-                  path: 'create-group',
-                  name: 'create_group',
-                  builder: (context, state) => const CreateGroupScreen(),
-                ),
-                GoRoute(
-                  path: 'join-group',
-                  name: 'join_group',
-                  builder: (context, state) => const JoinGroupScreen(),
-                ),
-              ],
             ),
 
             // Group detail + nested routes
@@ -145,7 +133,6 @@ final appRouter = GoRouter(
               path: '/app/personal',
               builder: (context, state) => const PersonalHomeScreen(),
               routes: [
-                // Missing route — now added
                 GoRoute(
                   path: 'add',
                   name: 'add_personal_expense',
@@ -166,6 +153,18 @@ final appRouter = GoRouter(
           ],
         ),
       ],
+    ),
+
+    // ✅ OUTSIDE the shell → bottom bar will NOT show
+    GoRoute(
+      path: '/create-group',
+      name: 'create_group',
+      builder: (context, state) => const CreateGroupScreen(),
+    ),
+    GoRoute(
+      path: '/join-group',
+      name: 'join_group',
+      builder: (context, state) => const JoinGroupScreen(),
     ),
   ],
 );
