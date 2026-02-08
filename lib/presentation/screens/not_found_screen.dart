@@ -10,7 +10,7 @@ class NotFoundScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Page Not Found'),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.chevron_left_rounded),
           onPressed: () => context.pop(),
         ),
       ),

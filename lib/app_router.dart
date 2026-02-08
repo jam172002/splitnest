@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:splitnest/presentation/screens/auth/register_screen.dart';
+import 'package:splitnest/presentation/screens/group/group_info_screen.dart';
 import 'package:splitnest/presentation/screens/personal/add_personal_tx_screen.dart';
 
 import 'data/auth_repo.dart';
@@ -147,6 +148,14 @@ final appRouter = GoRouter(
       path: '/app/personal/add',
       name: 'add_personal_expense',
       builder: (context, state) => const AddPersonalTxScreen(),
+    ),
+
+    GoRoute(
+      path: '/group/:groupId/info',
+      builder: (context, state) {
+        final groupId = state.pathParameters['groupId']!;
+        return GroupInfoScreen(groupId: groupId);
+      },
     ),
   ],
 );

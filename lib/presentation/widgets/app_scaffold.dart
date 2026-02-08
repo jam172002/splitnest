@@ -4,6 +4,9 @@ class AppScaffold extends StatelessWidget {
   final String title;
   final Widget child;
 
+  /// ✅ NEW: custom title widget (for clickable WhatsApp-like title)
+  final Widget? titleWidget;
+
   /// AppBar related
   final List<Widget>? actions;
   final bool centerTitle;
@@ -15,7 +18,7 @@ class AppScaffold extends StatelessWidget {
   final EdgeInsets? padding;
   final bool useSafeArea;
   final Color? backgroundColor;
-  final bool isScrollable; // ← NEW: Automatically handle scrolling
+  final bool isScrollable;
 
   /// FAB related
   final Widget? floatingActionButton;
@@ -33,15 +36,16 @@ class AppScaffold extends StatelessWidget {
     super.key,
     required this.title,
     required this.child,
+    this.titleWidget, // ✅ NEW
     this.actions,
-    this.centerTitle = false, // ← M3 standard often prefers left-aligned
+    this.centerTitle = false,
     this.bottom,
     this.leading,
     this.automaticallyImplyLeading = true,
     this.padding,
     this.useSafeArea = true,
     this.backgroundColor,
-    this.isScrollable = false, // Default to false to avoid double-scroll issues
+    this.isScrollable = false,
     this.floatingActionButton,
     this.floatingActionButtonLocation,
     this.extendBodyBehindAppBar = false,
@@ -57,12 +61,10 @@ class AppScaffold extends StatelessWidget {
 
     Widget bodyContent = child;
 
-    // Apply padding
     if (padding != null) {
       bodyContent = Padding(padding: padding!, child: bodyContent);
     }
 
-    // Wrap in scroll view if requested or if a controller is provided
     if (isScrollable || scrollController != null) {
       bodyContent = SingleChildScrollView(
         controller: scrollController,
@@ -71,7 +73,6 @@ class AppScaffold extends StatelessWidget {
       );
     }
 
-    // Wrap with SafeArea
     if (useSafeArea) {
       bodyContent = SafeArea(child: bodyContent);
     }
@@ -79,38 +80,35 @@ class AppScaffold extends StatelessWidget {
     return Scaffold(
       backgroundColor: backgroundColor ?? theme.scaffoldBackgroundColor,
       extendBodyBehindAppBar: extendBodyBehindAppBar,
-
       appBar: AppBar(
-        title: Text(
-          title,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: colorScheme.onSurface,
-          ),
-        ),
+        title: titleWidget ??
+            Text(
+              title,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
+              ),
+            ),
         centerTitle: centerTitle,
         actions: actions,
         leading: leading,
         automaticallyImplyLeading: automaticallyImplyLeading,
         bottom: bottom,
-
-        // --- Material 3 Visuals ---
         elevation: 0,
         scrolledUnderElevation: 3,
         surfaceTintColor: colorScheme.surfaceTint,
         backgroundColor: theme.scaffoldBackgroundColor,
       ),
-
       drawer: drawer,
       endDrawer: endDrawer,
       body: bodyContent,
       floatingActionButton: floatingActionButton,
-      floatingActionButtonLocation: floatingActionButtonLocation ?? FloatingActionButtonLocation.endFloat,
+      floatingActionButtonLocation:
+      floatingActionButtonLocation ?? FloatingActionButtonLocation.endFloat,
       resizeToAvoidBottomInset: true,
     );
   }
 
-  // Convenience Factory for Scrollable Screens (like Settings or Forms)
   factory AppScaffold.scrollable({
     required String title,
     required Widget child,
