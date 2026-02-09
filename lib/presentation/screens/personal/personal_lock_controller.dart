@@ -7,23 +7,34 @@ class PersonalLockController extends ChangeNotifier {
   static const _pinKey = 'personal_lock_pin';
   static const _storage = FlutterSecureStorage();
 
+  Duration lockDuration = const Duration(seconds: 10);
   final LocalAuthentication _auth = LocalAuthentication();
-
   DateTime? _unlockedUntil;
   Timer? _timer;
-
-  Duration lockDuration = const Duration(seconds: 10);
 
   bool get isUnlocked =>
       _unlockedUntil != null && DateTime.now().isBefore(_unlockedUntil!);
 
   bool get isLocked => !isUnlocked;
 
+  /// Call this whenever the user interacts with the Personal tab.
+  /// It extends the unlock window by [lockDuration] from *now*.
+  void bumpInactivity() {
+    if (isLocked) return; // don't bump when already locked
+    _unlockedUntil = DateTime.now().add(lockDuration);
+    _timer?.cancel();
+    _timer = Timer(lockDuration, () {
+      notifyListeners(); // show overlay after inactivity duration
+    });
+    // no need to notify every tap; but ok if you want
+    // notifyListeners();
+  }
+
   void unlockFor(Duration d) {
     _unlockedUntil = DateTime.now().add(d);
     _timer?.cancel();
     _timer = Timer(d, () {
-      notifyListeners(); // triggers overlay to appear again
+      notifyListeners();
     });
     notifyListeners();
   }
@@ -33,7 +44,6 @@ class PersonalLockController extends ChangeNotifier {
     _timer?.cancel();
     notifyListeners();
   }
-
   // ---- PIN ----
   Future<bool> hasPin() async {
     final pin = await _storage.read(key: _pinKey);
@@ -55,17 +65,20 @@ class PersonalLockController extends ChangeNotifier {
       final supported = await _auth.isDeviceSupported();
       if (!supported) return false;
 
-      final available = await _auth.getAvailableBiometrics();
-      return available.isNotEmpty;
+      final biometrics = await _auth.getAvailableBiometrics();
+      return biometrics.isNotEmpty;
     } catch (_) {
       return false;
     }
   }
 
-
   Future<bool> authBiometric() async {
     try {
-      return await _auth.authenticate(localizedReason: 'Unlock Personal tab');
+      // This shows Fingerprint OR Face ID depending on device,
+      // and may allow device PIN/pattern fallback automatically.
+      return await _auth.authenticate(
+        localizedReason: 'Unlock Personal tab',
+      );
     } catch (_) {
       return false;
     }
