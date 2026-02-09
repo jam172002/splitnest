@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -20,7 +22,8 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
   final _title = TextEditingController();
   final _amount = TextEditingController();
   final _counterparty = TextEditingController();
-
+  String? _editId;
+  bool _loadingEdit = false;
   bool _busy = false;
   String? _err;
 
@@ -31,6 +34,12 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
 
   final List<String> _quickExpense = ['Groceries', 'Food', 'Transport', 'Rent', 'Medicine'];
   final List<String> _quickIncome = ['Salary', 'Freelance', 'Refund', 'Bonus'];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadEdit());
+  }
 
   @override
   void dispose() {
@@ -54,21 +63,37 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
       if (title.isEmpty) throw Exception('Enter title');
 
       // Loan payments require a selected loan
-      if (_type == PersonalTxType.loanPayment && (_targetLoanId == null || _targetLoanId!.isEmpty)) {
+      if (_type == PersonalTxType.loanPayment &&
+          (_targetLoanId == null || _targetLoanId!.isEmpty)) {
         throw Exception('Select a loan first');
       }
 
       final uid = context.read<AuthRepo>().currentUser!.uid;
 
-      await context.read<PersonalRepo>().addPersonal(
-        uid: uid,
-        amount: amt,
-        title: title,
-        at: DateTime.now(),
-        type: _type,
-        counterparty: _counterparty.text.trim().isEmpty ? null : _counterparty.text.trim(),
-        targetLoanId: _type == PersonalTxType.loanPayment ? _targetLoanId : null,
-      );
+      if (_editId != null && _editId!.isNotEmpty) {
+        // ✅ UPDATE existing tx
+        await context.read<PersonalRepo>().updatePersonal(
+          uid: uid,
+          id: _editId!,
+          amount: amt,
+          title: title,
+          at: DateTime.now(),
+          type: _type,
+          counterparty: _counterparty.text.trim().isEmpty ? null : _counterparty.text.trim(),
+          targetLoanId: _type == PersonalTxType.loanPayment ? _targetLoanId : null,
+        );
+      } else {
+        // ✅ ADD new tx
+        await context.read<PersonalRepo>().addPersonal(
+          uid: uid,
+          amount: amt,
+          title: title,
+          at: DateTime.now(),
+          type: _type,
+          counterparty: _counterparty.text.trim().isEmpty ? null : _counterparty.text.trim(),
+          targetLoanId: _type == PersonalTxType.loanPayment ? _targetLoanId : null,
+        );
+      }
 
       if (mounted) context.pop();
     } catch (e) {
@@ -76,6 +101,45 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _maybeLoadEdit() async {
+    final uri = GoRouterState.of(context).uri;
+    final editId = uri.queryParameters['edit'];
+    if (editId == null || editId.isEmpty) return;
+
+    setState(() {
+      _editId = editId;
+      _loadingEdit = true;
+    });
+
+    final uid = context.read<AuthRepo>().currentUser!.uid;
+
+    StreamSubscription<List<PersonalTx>>? sub;
+    sub = context.read<PersonalRepo>().watchPersonal(uid).listen((list) {
+      final tx = list.where((e) => e.id == editId).cast<PersonalTx?>().firstWhere(
+            (e) => e != null,
+        orElse: () => null,
+      );
+
+      if (tx == null) return;
+
+      if (!mounted) {
+        sub?.cancel();
+        return;
+      }
+
+      setState(() {
+        _type = tx.type;
+        _title.text = tx.title;
+        _amount.text = tx.amount.toString();
+        _counterparty.text = tx.counterparty ?? '';
+        _targetLoanId = tx.targetLoanId;
+        _loadingEdit = false;
+      });
+
+      sub?.cancel();
+    });
   }
 
   @override
@@ -87,7 +151,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
     final quick = _type == PersonalTxType.income ? _quickIncome : _quickExpense;
 
     return AppScaffold(
-      title: 'Add Entry',
+      title: _editId == null ? 'Add Entry' : 'Edit Entry',
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

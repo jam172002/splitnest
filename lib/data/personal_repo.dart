@@ -6,11 +6,11 @@ import '../domain/models/personal_tx.dart';
 class PersonalRepo {
   final _db = FirebaseFirestore.instance;
 
-  CollectionReference<Map<String, dynamic>> _col(String uid) {
-    return _db
-        .doc('${FirestorePaths.users}/$uid')
-        .collection('personalTx');
-  }
+  CollectionReference<Map<String, dynamic>> _col(String uid) =>
+      _db.doc('${FirestorePaths.users}/$uid').collection('personalTx');
+
+  CollectionReference<Map<String, dynamic>> _deletedCol(String uid) =>
+      _db.doc('${FirestorePaths.users}/$uid').collection('deletedPersonalTx');
 
   Stream<List<PersonalTx>> watchPersonal(String uid) {
     return _col(uid)
@@ -19,10 +19,6 @@ class PersonalRepo {
         .map((s) => s.docs.map((d) => PersonalTx.fromMap(d.id, d.data())).toList());
   }
 
-  /// Add any personal entry:
-  /// - expense / income
-  /// - loanTaken / loanGiven (principal)
-  /// - loanPayment (against a loan via targetLoanId)
   Future<void> addPersonal({
     required String uid,
     required double amount,
@@ -40,16 +36,9 @@ class PersonalRepo {
       title: title,
       at: at,
       type: type,
-      // keep loanId for principal entries (harmless for others)
-      loanId: (type == PersonalTxType.loanGiven || type == PersonalTxType.loanTaken)
-          ? ref.id
-          : null,
-      counterparty: (counterparty == null || counterparty.trim().isEmpty)
-          ? null
-          : counterparty.trim(),
-      targetLoanId: (type == PersonalTxType.loanPayment)
-          ? targetLoanId
-          : null,
+      loanId: (type == PersonalTxType.loanGiven || type == PersonalTxType.loanTaken) ? ref.id : null,
+      counterparty: (counterparty == null || counterparty.trim().isEmpty) ? null : counterparty.trim(),
+      targetLoanId: (type == PersonalTxType.loanPayment) ? targetLoanId : null,
     );
 
     await ref.set(tx.toMap());
@@ -75,9 +64,7 @@ class PersonalRepo {
       at: at,
       type: type,
       loanId: ref.id,
-      counterparty: (counterparty == null || counterparty.trim().isEmpty)
-          ? null
-          : counterparty.trim(),
+      counterparty: (counterparty == null || counterparty.trim().isEmpty) ? null : counterparty.trim(),
       targetLoanId: null,
     );
 
@@ -110,5 +97,51 @@ class PersonalRepo {
     );
 
     await ref.set(tx.toMap());
+  }
+
+  Future<void> updatePersonal({
+    required String uid,
+    required String id,
+    double? amount,
+    String? title,
+    DateTime? at,
+    PersonalTxType? type,
+    String? counterparty,
+    String? targetLoanId,
+  }) async {
+    final data = <String, dynamic>{};
+    if (amount != null) data['amount'] = amount;
+    if (title != null) data['title'] = title;
+    if (at != null) data['at'] = at.toIso8601String();
+    if (type != null) data['type'] = type.name;
+    if (counterparty != null) data['counterparty'] = counterparty;
+    if (targetLoanId != null) data['targetLoanId'] = targetLoanId;
+
+    await _col(uid).doc(id).update(data);
+  }
+
+  /// Soft delete:
+  /// - copies tx to deletedPersonalTx with deleteNote + deletedAt
+  /// - removes from personalTx
+  Future<void> softDeletePersonal({
+    required String uid,
+    required PersonalTx tx,
+    required String deleteNote,
+  }) async {
+    final batch = _db.batch();
+
+    final fromRef = _col(uid).doc(tx.id);
+    final toRef = _deletedCol(uid).doc(tx.id);
+
+    batch.set(toRef, {
+      ...tx.toMap(),
+      'deletedAt': DateTime.now().toIso8601String(),
+      'deleteNote': deleteNote.trim(),
+      'originalId': tx.id,
+    });
+
+    batch.delete(fromRef);
+
+    await batch.commit();
   }
 }
