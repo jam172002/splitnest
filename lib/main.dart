@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
+import 'package:splitnest/presentation/screens/personal/personal_lock_controller.dart';
 import 'package:splitnest/theme/theme.dart';
 import 'package:splitnest/theme/theme_mode_controller.dart';
 
@@ -28,6 +29,7 @@ class SplitNestApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthRepo()),
         ChangeNotifierProvider(create: (_) => ThemeModeController()),
+        ChangeNotifierProvider(create: (_) => PersonalLockController()),
         Provider(create: (_) => GroupRepo()),
         Provider(create: (_) => PersonalRepo()),
         Provider(create: (_) => NotificationsRepo()),

@@ -118,10 +118,10 @@ class AppScaffold extends StatelessWidget {
   }) =>
       AppScaffold(
         title: title,
-        child: child,
         actions: actions,
         floatingActionButton: fab,
         padding: padding,
         isScrollable: true,
+        child: child,
       );
 }

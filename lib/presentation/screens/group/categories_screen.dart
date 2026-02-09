@@ -88,7 +88,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             child: StreamBuilder(
               stream: repo.watchCategoryDocs(widget.groupId),
               builder: (context, snap) {
-                final items = (snap.data ?? const <Map<String, dynamic>>[]) as List<Map<String, dynamic>>;
+                final items = (snap.data ?? const <Map<String, dynamic>>[]);
 
                 if (snap.connectionState == ConnectionState.waiting && items.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
@@ -118,7 +118,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                       elevation: 0,
                       color: Colors.transparent,
                       shape: RoundedRectangleBorder(
-                        side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5)),
+                        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       margin: const EdgeInsets.only(bottom: 8),

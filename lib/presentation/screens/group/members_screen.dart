@@ -62,7 +62,7 @@ class MembersScreen extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5)),
+                  side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                 ),
                 child: ListTile(
                   leading: CircleAvatar(
@@ -79,7 +79,7 @@ class MembersScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isAdmin ? colorScheme.tertiaryContainer : colorScheme.surfaceVariant,
+                          color: isAdmin ? colorScheme.tertiaryContainer : colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:splitnest/presentation/screens/auth/register_screen.dart';
 import 'package:splitnest/presentation/screens/group/group_info_screen.dart';
 import 'package:splitnest/presentation/screens/personal/add_personal_tx_screen.dart';
+import 'package:splitnest/presentation/screens/personal/personal_lock_wrapper.dart';
 
 import 'data/auth_repo.dart';
 import '../presentation/app_shell.dart';
@@ -78,7 +79,9 @@ final appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/app/personal',
-              builder: (context, state) => const PersonalHomeScreen(),
+              builder: (context, state) => const PersonalLockWrapper(
+                child: PersonalHomeScreen(),
+              ),
             ),
           ],
         ),

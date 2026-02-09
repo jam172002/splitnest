@@ -121,7 +121,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
             // --- Logic Section ---
             DropdownButtonFormField<String>(
-              value: _approvalMode,
+              initialValue: _approvalMode,
               items: const [
                 DropdownMenuItem(value: 'any', child: Text('Any member can approve')),
                 DropdownMenuItem(value: 'all', child: Text('Everyone must approve')),

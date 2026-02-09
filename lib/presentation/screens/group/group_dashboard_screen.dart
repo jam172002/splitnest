@@ -348,7 +348,7 @@ class _DashboardBody extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isSettlement ? 'Settlement' : (tx.category ?? 'Expense'),
+                  isSettlement ? 'Settlement' : (tx.category),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.1,
@@ -577,10 +577,11 @@ class _MetricTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   const _MetricTile({
+    super.key,
     required this.label,
     required this.value,
-    this.isAccent = false,
-    this.onTap,
+    this.isAccent = false, //  default
+    this.onTap,            //  optional
   });
 
   @override

@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../../data/auth_repo.dart';
 import '../../../data/notifications_repo.dart';
 import '../../widgets/busy_button.dart';
 import '../../widgets/app_scaffold.dart';

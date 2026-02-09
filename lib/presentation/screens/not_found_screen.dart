@@ -23,7 +23,7 @@ class NotFoundScreen extends StatelessWidget {
               style: TextStyle(fontSize: 18),
             ),
             const SizedBox(height: 12),
-            Text(
+            const Text(
               'The page you are trying to open does not exist.',
               style: TextStyle(color: Colors.grey),
               textAlign: TextAlign.center,

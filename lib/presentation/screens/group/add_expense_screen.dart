@@ -144,7 +144,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                               child: Text(
                                 'PKR',
                                 style: theme.textTheme.titleLarge?.copyWith(
-                                  color: colorScheme.primary.withOpacity(0.5),
+                                  color: colorScheme.primary.withValues(alpha: 0.5),
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -170,7 +170,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                   final cats = snap.data ?? ['breakfast', 'lunch', 'dinner', 'transport'];
                                   if (!cats.contains(_category)) _category = cats.first;
                                   return DropdownButtonFormField<String>(
-                                    value: _category,
+                                    initialValue: _category,
                                     isExpanded: true,
                                     decoration: const InputDecoration(
                                       labelText: 'Category',
@@ -206,7 +206,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         Text("Paid By", style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary)),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _paidBy,
+                          initialValue: _paidBy,
                           decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.account_balance_wallet_outlined),
                             hintText: 'Select who paid',
@@ -256,7 +256,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             margin: const EdgeInsets.only(bottom: 24),
-                            decoration: BoxDecoration(color: colorScheme.errorContainer.withOpacity(0.5), borderRadius: BorderRadius.circular(12)),
+                            decoration: BoxDecoration(color: colorScheme.errorContainer.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(12)),
                             child: Text(_errorMessage!, style: TextStyle(color: colorScheme.error), textAlign: TextAlign.center),
                           ),
 

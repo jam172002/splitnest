@@ -97,19 +97,19 @@ class MemberTransactionDetailScreen extends StatelessWidget {
                           color: colorScheme.surface,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5)),
+                            side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                           ),
                           margin: const EdgeInsets.only(bottom: 12),
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: isPaidBy ? Colors.green.withOpacity(0.1) : colorScheme.surfaceContainerHighest,
+                              backgroundColor: isPaidBy ? Colors.green.withValues(alpha: 0.1) : colorScheme.surfaceContainerHighest,
                               child: Icon(
                                 isPaidBy ? Icons.upload_rounded : Icons.download_rounded,
                                 color: isPaidBy ? Colors.green : colorScheme.onSurfaceVariant,
                                 size: 20,
                               ),
                             ),
-                            title: Text(tx.category?.toUpperCase() ?? 'EXPENSE',
+                            title: Text(tx.category.toUpperCase(),
                                 style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
