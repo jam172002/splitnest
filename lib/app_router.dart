@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:splitnest/presentation/screens/auth/register_screen.dart';
+import 'package:splitnest/presentation/screens/group/add_edit_bill_screen.dart';
+import 'package:splitnest/presentation/screens/group/add_income_screen.dart';
+import 'package:splitnest/presentation/screens/group/bills_screen.dart';
 import 'package:splitnest/presentation/screens/group/group_info_screen.dart';
 import 'package:splitnest/presentation/screens/personal/add_personal_tx_screen.dart';
 import 'package:splitnest/presentation/screens/personal/personal_lock_wrapper.dart';
@@ -117,6 +120,13 @@ final appRouter = GoRouter(
       ),
       routes: [
         GoRoute(
+          path: 'add-income',
+          name: 'add_income',
+          builder: (context, state) => AddIncomeScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+        GoRoute(
           path: 'members',
           name: 'group_members',
           builder: (context, state) => MembersScreen(
@@ -145,8 +155,28 @@ final appRouter = GoRouter(
           ),
         ),
       ],
-    ),
 
+    ),
+    GoRoute(
+      path: 'bills',
+      builder: (context, state) => BillsScreen(
+        groupId: state.pathParameters['groupId']!,
+      ),
+      routes: [
+        GoRoute(
+          path: 'add',
+          builder: (context, state) => AddEditBillScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+        GoRoute(
+          path: 'edit',
+          builder: (context, state) => AddEditBillScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+      ],
+    ),
     GoRoute(
       path: '/app/personal/add',
       name: 'add_personal_expense',

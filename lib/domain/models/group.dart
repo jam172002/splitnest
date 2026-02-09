@@ -18,6 +18,8 @@ class Group {
 
   /// "any" | "all" | "admin_only"
   final String approvalMode;
+  /// 'simple' or 'business'
+  final String type;
 
   Group({
     required this.id,
@@ -28,6 +30,7 @@ class Group {
     this.requireApproval = true,
     this.adminBypass = true,
     this.approvalMode = 'any',
+    this.type = 'simple',
   });
 
   Map<String, dynamic> toMap() => {
@@ -38,6 +41,7 @@ class Group {
     'requireApproval': requireApproval,
     'adminBypass': adminBypass,
     'approvalMode': approvalMode,
+    'type': type,
     'createdAt': DateTime.now().toIso8601String(),
   };
 
@@ -51,5 +55,6 @@ class Group {
     requireApproval: (m['requireApproval'] ?? true) as bool,
     adminBypass: (m['adminBypass'] ?? true) as bool,
     approvalMode: (m['approvalMode'] ?? 'any') as String,
+    type: (m['type'] ?? 'simple') as String,
   );
 }

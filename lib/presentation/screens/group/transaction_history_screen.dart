@@ -33,7 +33,7 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
                   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   child: Icon(tx.type == 'settlement' ? Icons.handshake : Icons.receipt_long),
                 ),
-                title: Text(tx.category),
+                //title: Text(tx.category),
                 subtitle: Text(Fmt.date(tx.at)),
                 trailing: Text(
                   Fmt.money(tx.amount),

@@ -1,106 +1,160 @@
+// domain/models/tx.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum TxStatus { pending, approved, rejected }
+
+class PayerPortion {
+  final String uid;
+  final double amount;
+
+  const PayerPortion({required this.uid, required this.amount});
+
+  Map<String, dynamic> toMap() => {
+    'uid': uid,
+    'amount': amount,
+  };
+
+  factory PayerPortion.fromMap(Map<String, dynamic> m) => PayerPortion(
+    uid: (m['uid'] ?? '') as String,
+    amount: ((m['amount'] ?? 0) as num).toDouble(),
+  );
+}
 
 class GroupTx {
   final String id;
-  final String type; // 'expense' | 'settlement'
+
+  /// expense | income | settlement | bill_instance
+  final String type;
 
   final double amount;
-  final DateTime at;
+  final String? category;
+  final String? description;
 
-  // Expense fields
-  final String category;
-  final String paidBy; // uid
-  final List<String> participants; // uids
+  /// Old legacy single payer (kept for backwards compatibility)
+  final String? paidBy;
 
-  // Settlement fields
+  /// NEW: multi-payer support
+  final List<PayerPortion> payers;
+
+  /// Participants for expense/bill splitting
+  final List<String> participants;
+
+  /// NEW: for business income distribution (uid -> amount)
+  /// (We use AMOUNTS, not ratios, to keep it simple & deterministic)
+  final Map<String, double> distributeTo;
+
+  /// settlement fields
   final String? fromUid;
   final String? toUid;
 
-  // Common fields
-  final String? description;          // ← NEW: optional note/description
+  final DateTime at;
+
   final TxStatus status;
-  final List<String> endorsedBy;      // uids who approved
-  final String createdBy;             // uid
+  final List<String> endorsedBy;
+  final String createdBy;
 
   GroupTx({
     required this.id,
     required this.type,
     required this.amount,
     required this.at,
-    required this.status,
-    required this.endorsedBy,
     required this.createdBy,
-    this.category = '',
-    this.paidBy = '',
+    this.category,
+    this.description,
+    this.paidBy,
+    this.payers = const [],
     this.participants = const [],
+    this.distributeTo = const {},
     this.fromUid,
     this.toUid,
-    this.description,                    // ← added here
+    this.status = TxStatus.approved,
+    this.endorsedBy = const [],
   });
 
   Map<String, dynamic> toMap() {
-    final map = <String, dynamic>{
+    return {
       'type': type,
       'amount': amount,
+      if (category != null) 'category': category,
+      if (description != null) 'description': description,
+
+      // Keep old key if you want; optional.
+      if (paidBy != null) 'paidBy': paidBy,
+
+      // NEW keys
+      if (payers.isNotEmpty) 'payers': payers.map((e) => e.toMap()).toList(),
+      if (participants.isNotEmpty) 'participants': participants,
+      if (distributeTo.isNotEmpty) 'distributeTo': distributeTo,
+
+      if (fromUid != null) 'fromUid': fromUid,
+      if (toUid != null) 'toUid': toUid,
+
       'at': at.toIso8601String(),
       'status': status.name,
       'endorsedBy': endorsedBy,
       'createdBy': createdBy,
     };
-
-    // Expense-specific
-    if (type == 'expense') {
-      map.addAll({
-        'category': category,
-        'paidBy': paidBy,
-        'participants': participants,
-      });
-    }
-
-    // Settlement-specific
-    if (type == 'settlement') {
-      map.addAll({
-        'fromUid': fromUid,
-        'toUid': toUid,
-      });
-    }
-
-    // Common optional field
-    if (description != null && description!.trim().isNotEmpty) {
-      map['description'] = description!.trim();
-    }
-
-    return map;
   }
 
   factory GroupTx.fromMap(String id, Map<String, dynamic> m) {
-    final type = (m['type'] ?? 'expense') as String;
+    // at
+    final atRaw = m['at'];
+    DateTime at;
+    if (atRaw is Timestamp) {
+      at = atRaw.toDate();
+    } else {
+      at = DateTime.tryParse((atRaw ?? '') as String) ?? DateTime.now();
+    }
+
+    // participants
+    final participants =
+        (m['participants'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[];
+
+    // payers (new) OR fallback to paidBy (legacy)
+    final payersRaw = m['payers'];
+    List<PayerPortion> payers = [];
+    if (payersRaw is List) {
+      payers = payersRaw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .map((e) => PayerPortion.fromMap(e))
+          .toList();
+    }
+
+    final paidBy = (m['paidBy'] ?? '') as String?;
+    if (payers.isEmpty && paidBy != null && paidBy.trim().isNotEmpty) {
+      // Legacy: single payer paid full amount
+      final amt = ((m['amount'] ?? 0) as num).toDouble();
+      payers = [PayerPortion(uid: paidBy, amount: amt)];
+    }
+
+    // distributeTo (income distribution)
+    final distRaw = m['distributeTo'];
+    final distributeTo = <String, double>{};
+    if (distRaw is Map) {
+      distRaw.forEach((k, v) {
+        distributeTo[k.toString()] = ((v ?? 0) as num).toDouble();
+      });
+    }
 
     return GroupTx(
       id: id,
-      type: type,
+      type: (m['type'] ?? 'expense') as String,
       amount: ((m['amount'] ?? 0) as num).toDouble(),
-      at: DateTime.tryParse((m['at'] ?? '') as String) ?? DateTime.now(),
+      category: m['category'] as String?,
+      description: m['description'] as String?,
+      paidBy: paidBy,
+      payers: payers,
+      participants: participants,
+      distributeTo: distributeTo,
+      fromUid: m['fromUid'] as String?,
+      toUid: m['toUid'] as String?,
+      at: at,
       status: TxStatus.values.firstWhere(
-            (e) => e.name == (m['status'] ?? 'pending'),
-        orElse: () => TxStatus.pending,
+            (e) => e.name == (m['status'] ?? TxStatus.approved.name),
+        orElse: () => TxStatus.approved,
       ),
-      endorsedBy: List<String>.from((m['endorsedBy'] ?? []) as List),
+      endorsedBy: (m['endorsedBy'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[],
       createdBy: (m['createdBy'] ?? '') as String,
-
-      // Expense fields
-      category: type == 'expense' ? (m['category'] ?? '') as String : '',
-      paidBy: type == 'expense' ? (m['paidBy'] ?? '') as String : '',
-      participants: type == 'expense'
-          ? List<String>.from((m['participants'] ?? []) as List)
-          : const [],
-
-      // Settlement fields
-      fromUid: type == 'settlement' ? (m['fromUid'] as String?) : null,
-      toUid: type == 'settlement' ? (m['toUid'] as String?) : null,
-
-      // Common optional field
-      description: m['description'] as String?,   // ← read from Firestore
     );
   }
 }

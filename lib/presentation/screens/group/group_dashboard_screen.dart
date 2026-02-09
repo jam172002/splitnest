@@ -86,7 +86,7 @@ class GroupDashboardScreen extends StatelessWidget {
           // ✅ No Members/Stats/Settings here anymore
           actions: const [],
 
-          floatingActionButton: _buildFab(context),
+          floatingActionButton: _buildFab(context, group),
 
           child: StreamBuilder<List<GroupMember>>(
             stream: groupRepo.watchMembers(groupId),
@@ -120,13 +120,25 @@ class GroupDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFab(BuildContext context) {
+  Widget _buildFab(BuildContext context, Group group) {
     final cs = Theme.of(context).colorScheme;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        // ✅ Bills button only for business group
+        if (group.type == 'business') ...[
+          FloatingActionButton.small(
+            heroTag: 'bills',
+            onPressed: () => context.push('/group/$groupId/bills'),
+            backgroundColor: cs.surfaceContainerHigh,
+            foregroundColor: cs.onSurface,
+            child: const Icon(Icons.receipt_long_outlined),
+          ),
+          const SizedBox(height: 12),
+        ],
+
         FloatingActionButton.small(
           heroTag: 'settle',
           onPressed: () => context.pushNamed(
@@ -137,7 +149,9 @@ class GroupDashboardScreen extends StatelessWidget {
           foregroundColor: cs.onSurface,
           child: const Icon(Icons.handshake_outlined),
         ),
+
         const SizedBox(height: 12),
+
         FloatingActionButton.extended(
           heroTag: 'add_expense',
           onPressed: () => context.pushNamed(
@@ -347,13 +361,13 @@ class _DashboardBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+               /* Text(
                   isSettlement ? 'Settlement' : (tx.category),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.1,
                   ),
-                ),
+                ),*/
                 const SizedBox(height: 2),
                 Text(
                   '$payerName • ${Fmt.date(tx.at)}',
@@ -662,4 +676,6 @@ class _MetricTile extends StatelessWidget {
       child: content,
     );
   }
+
+
 }

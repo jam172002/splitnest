@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import '../domain/models/bill.dart';
 import '../core/firestore_paths.dart';
 import '../domain/models/group.dart';
 import '../domain/models/group_member.dart';
@@ -35,7 +35,8 @@ class GroupRepo {
     required String email,
     bool requireApproval = true,
     bool adminBypass = true,
-    String approvalMode = 'any', // 'any' | 'all' | 'admin_only'
+    String approvalMode = 'any',
+    String type = 'simple', // ✅ NEW
   }) async {
     final ref = _db.collection(FirestorePaths.groups).doc();
     final group = Group(
@@ -46,6 +47,7 @@ class GroupRepo {
       requireApproval: requireApproval,
       adminBypass: adminBypass,
       approvalMode: approvalMode,
+      type: type, // ✅ NEW
     );
 
     // Fetch creator's name from users collection
@@ -264,7 +266,13 @@ class GroupRepo {
     required Group group,
     required double amount,
     required String category,
+
+    // legacy param (your current UI)
     required String paidBy,
+
+    // NEW optional: multi-payer
+    List<PayerPortion>? payers,
+
     required List<String> participants,
     String? description,
     required DateTime at,
@@ -284,12 +292,18 @@ class GroupRepo {
         .collection('tx')
         .doc();
 
+    // ✅ Backward compatible: if payers not provided, build from paidBy
+    final finalPayers = (payers != null && payers.isNotEmpty)
+        ? payers
+        : [PayerPortion(uid: paidBy, amount: amount)];
+
     final tx = GroupTx(
       id: ref.id,
       type: 'expense',
       amount: amount,
       category: category,
-      paidBy: paidBy,
+      paidBy: paidBy, // keep legacy field
+      payers: finalPayers,
       participants: participants,
       description: description?.trim().isNotEmpty == true ? description!.trim() : null,
       at: at,
@@ -422,33 +436,52 @@ class GroupRepo {
         .collection(FirestorePaths.groups)
         .doc(groupId)
         .collection('tx')
-        .where('type', isEqualTo: 'expense')
         .get();
 
     final balances = <String, double>{};
 
+    void add(String uid, double v) {
+      if (uid.trim().isEmpty) return;
+      balances.update(uid, (x) => x + v, ifAbsent: () => v);
+    }
+
     for (final doc in txSnapshot.docs) {
-      final data = doc.data();
-      final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
-      final paidBy = data['paidBy'] as String?;
-      final participants = (data['participants'] as List<dynamic>?)?.cast<String>() ?? [];
+      final tx = GroupTx.fromMap(doc.id, doc.data());
 
-      if (amount <= 0 || paidBy == null || participants.isEmpty) continue;
+      // ✅ only approved affects balances
+      if (tx.status != TxStatus.approved) continue;
 
-      final sharePerPerson = amount / participants.length;
+      if (tx.type == 'expense' || tx.type == 'bill_instance') {
+        if (tx.amount <= 0 || tx.participants.isEmpty) continue;
 
-      balances.update(
-        paidBy,
-            (value) => value + amount,
-        ifAbsent: () => amount,
-      );
+        // payers get credit
+        for (final p in tx.payers) {
+          if (p.amount > 0) add(p.uid, p.amount);
+        }
 
-      for (final participant in participants) {
-        balances.update(
-          participant,
-              (value) => value - sharePerPerson,
-          ifAbsent: () => -sharePerPerson,
-        );
+        // participants share debit
+        final share = tx.amount / tx.participants.length;
+        for (final uid in tx.participants) {
+          add(uid, -share);
+        }
+      }
+
+      if (tx.type == 'income') {
+        // distributed immediately (uid -> amount)
+        tx.distributeTo.forEach((uid, amt) {
+          if (amt > 0) add(uid, amt);
+        });
+      }
+
+      if (tx.type == 'settlement') {
+        if (tx.fromUid == null || tx.toUid == null) continue;
+        if (tx.amount <= 0) continue;
+
+        // from pays -> less debt => +amount
+        add(tx.fromUid!, tx.amount);
+
+        // to receives -> less credit => -amount
+        add(tx.toUid!, -tx.amount);
       }
     }
 
@@ -516,11 +549,17 @@ class GroupRepo {
         .doc(groupId)
         .collection('tx')
         .where('type', isEqualTo: 'expense')
-        .where('paidBy', isEqualTo: memberId)
         .orderBy('at', descending: true)
         .get();
 
-    return snapshot.docs.map((doc) => GroupTx.fromMap(doc.id, doc.data())).toList();
+    final all = snapshot.docs.map((d) => GroupTx.fromMap(d.id, d.data())).toList();
+
+    //  include: legacy paidBy OR new payers list
+    return all.where((tx) {
+      if (tx.status != TxStatus.approved) return false;
+      if (tx.paidBy == memberId) return true;
+      return tx.payers.any((p) => p.uid == memberId && p.amount > 0);
+    }).toList();
   }
 
   Future<void> addMember({
@@ -605,5 +644,231 @@ class GroupRepo {
     );
 
     await batch.commit();
+  }
+
+  Future<void> addIncome({
+    required String groupId,
+    required Group group,
+    required double amount,
+    required Map<String, double> distributeTo, // uid -> amount (must sum to total)
+    String? description,
+    required DateTime at,
+    required String createdBy,
+    required bool isAdmin,
+  }) async {
+    if (group.type != 'business') {
+      throw Exception('Income is only available in business groups.');
+    }
+    if (amount <= 0) throw Exception('Amount must be greater than 0');
+    if (distributeTo.isEmpty) throw Exception('Select at least one member for distribution');
+
+    final totalDist = distributeTo.values.fold<double>(0, (a, b) => a + b);
+    // allow tiny rounding error
+    if ((totalDist - amount).abs() > 0.01) {
+      throw Exception('Distribution must equal total income.');
+    }
+
+    final status = (isAdmin && group.adminBypass)
+        ? TxStatus.approved
+        : (group.requireApproval ? TxStatus.pending : TxStatus.approved);
+
+    final ref = _db
+        .collection(FirestorePaths.groups)
+        .doc(groupId)
+        .collection('tx')
+        .doc();
+
+    final tx = GroupTx(
+      id: ref.id,
+      type: 'income',
+      amount: amount,
+      distributeTo: distributeTo,
+      description: description?.trim().isNotEmpty == true ? description!.trim() : null,
+      at: at,
+      status: status,
+      endorsedBy: status == TxStatus.approved ? [createdBy] : [],
+      createdBy: createdBy,
+    );
+
+    await ref.set(tx.toMap());
+  }
+
+
+
+// inside GroupRepo class:
+
+  CollectionReference<Map<String, dynamic>> _billsCol(String groupId) =>
+      _db.collection(FirestorePaths.groups).doc(groupId).collection('bills');
+
+  Stream<List<BillTemplate>> watchBills(String groupId) {
+    return _billsCol(groupId)
+        .orderBy('dueDay')
+        .snapshots()
+        .map((s) => s.docs.map((d) => BillTemplate.fromMap(d.id, d.data())).toList());
+  }
+
+  Future<String> addBill({
+    required String groupId,
+    required Group group,
+    required String title,
+    required double amount,
+    required List<String> participants,
+    required int dueDay,
+    String? category,
+    required String createdBy,
+  }) async {
+    if (group.type != 'business') throw Exception('Bills are only available in business groups.');
+    if (title.trim().isEmpty) throw Exception('Enter bill title');
+    if (amount <= 0) throw Exception('Amount must be greater than 0');
+    if (participants.isEmpty) throw Exception('Select at least one participant');
+    if (dueDay < 1 || dueDay > 28) throw Exception('Due day must be between 1 and 28');
+
+    final ref = _billsCol(groupId).doc();
+    final bill = BillTemplate(
+      id: ref.id,
+      title: title.trim(),
+      amount: amount,
+      interval: BillInterval.monthly,
+      participants: participants,
+      dueDay: dueDay,
+      category: category?.trim().isNotEmpty == true ? category!.trim() : null,
+      createdAt: DateTime.now(),
+      createdBy: createdBy,
+    );
+
+    await ref.set(bill.toMap());
+    return ref.id;
+  }
+
+  Future<void> updateBill({
+    required String groupId,
+    required String billId,
+    String? title,
+    double? amount,
+    List<String>? participants,
+    int? dueDay,
+    String? category,
+  }) async {
+    final data = <String, dynamic>{};
+    if (title != null) data['title'] = title.trim();
+    if (amount != null) data['amount'] = amount;
+    if (participants != null) data['participants'] = participants;
+    if (dueDay != null) data['dueDay'] = dueDay;
+    if (category != null) data['category'] = category.trim().isEmpty ? null : category.trim();
+
+    await _billsCol(groupId).doc(billId).update(data);
+  }
+
+  Future<void> deleteBill({
+    required String groupId,
+    required String billId,
+  }) async {
+    await _billsCol(groupId).doc(billId).delete();
+  }
+
+  /// Create monthly bill_instance tx (idempotent per bill+month)
+  Future<void> generateBillsForMonth({
+    required String groupId,
+    required Group group,
+    required int year,
+    required int month,
+    required String createdBy,
+    required bool isAdmin,
+  }) async {
+    if (group.type != 'business') throw Exception('Bills are only available in business groups.');
+
+    final billsSnap = await _billsCol(groupId).get();
+    final bills = billsSnap.docs.map((d) => BillTemplate.fromMap(d.id, d.data())).toList();
+
+    if (bills.isEmpty) return;
+
+    // existing bill instances for this month
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 1);
+
+    final txSnap = await _db
+        .collection(FirestorePaths.groups)
+        .doc(groupId)
+        .collection('tx')
+        .where('type', isEqualTo: 'bill_instance')
+        .get();
+
+    // detect existing via billId + year/month stored
+    final existingKeys = <String>{};
+    for (final doc in txSnap.docs) {
+      final m = doc.data();
+      final bid = (m['billId'] ?? '') as String;
+      final y = (m['billYear'] ?? 0) as int;
+      final mo = (m['billMonth'] ?? 0) as int;
+      if (bid.isNotEmpty && y == year && mo == month) {
+        existingKeys.add('$bid-$year-$month');
+      }
+    }
+
+    final status = (isAdmin && group.adminBypass)
+        ? TxStatus.approved
+        : (group.requireApproval ? TxStatus.pending : TxStatus.approved);
+
+    final batch = _db.batch();
+    for (final b in bills) {
+      final key = '${b.id}-$year-$month';
+      if (existingKeys.contains(key)) continue;
+
+      final due = DateTime(year, month, b.dueDay);
+      if (due.isBefore(start) || due.isAfter(end)) {
+        // safe guard, usually not needed
+      }
+
+      final txRef = _db
+          .collection(FirestorePaths.groups)
+          .doc(groupId)
+          .collection('tx')
+          .doc();
+
+      final tx = GroupTx(
+        id: txRef.id,
+        type: 'bill_instance',
+        amount: b.amount,
+        category: b.category ?? 'bill',
+        description: b.title,
+        participants: b.participants,
+        payers: const [], // not paid yet (or can be paid later)
+        at: due,
+        status: status,
+        endorsedBy: status == TxStatus.approved ? [createdBy] : [],
+        createdBy: createdBy,
+      ).toMap();
+
+      batch.set(txRef, {
+        ...tx,
+        'billId': b.id,
+        'billYear': year,
+        'billMonth': month,
+        'billTitle': b.title,
+        'billDueDay': b.dueDay,
+      });
+    }
+
+    await batch.commit();
+  }
+
+  /// Mark a bill instance as paid using payers (supports multi payer)
+  Future<void> markBillInstancePaid({
+    required String groupId,
+    required String txId,
+    required List<PayerPortion> payers,
+  }) async {
+    if (payers.isEmpty) throw Exception('Add at least one payer');
+    final total = payers.fold<double>(0, (a, b) => a + b.amount);
+    if (total <= 0) throw Exception('Invalid payer amounts');
+
+    await _db
+        .collection(FirestorePaths.groups)
+        .doc(groupId)
+        .collection('tx')
+        .doc(txId)
+        .update({
+      'payers': payers.map((e) => e.toMap()).toList(),
+    });
   }
 }

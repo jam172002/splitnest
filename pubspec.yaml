@@ -44,3 +44,7 @@ flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
   image_path: "assets/images/app_logo.jpg"   # forward slashes, no extra quotes or comments here
+
+
+#history of transactions
+#if record clear but it will stay in history

@@ -6,6 +6,7 @@ import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
 import '../../../domain/models/group.dart';
 import '../../../domain/models/group_member.dart';
+import '../../../domain/models/tx.dart'; // ✅ for PayerPortion
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/busy_button.dart';
 
@@ -17,6 +18,13 @@ class AddExpenseScreen extends StatefulWidget {
   State<AddExpenseScreen> createState() => _AddExpenseScreenState();
 }
 
+class _PayerRow {
+  String? uid;
+  final TextEditingController amountCtrl = TextEditingController();
+
+  void dispose() => amountCtrl.dispose();
+}
+
 class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -25,8 +33,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final _amountFocus = FocusNode();
 
   String _category = 'breakfast';
-  String? _paidBy;
   final Set<String> _participants = {};
+
+  // ✅ NEW: multi payer rows
+  final List<_PayerRow> _payerRows = [];
 
   bool _isBusy = false;
   String? _errorMessage;
@@ -34,9 +44,19 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   @override
   void initState() {
     super.initState();
-    // Rebuild when focus changes to toggle hintText visibility
+
     _amountFocus.addListener(() {
       if (mounted) setState(() {});
+    });
+
+    // ✅ start with 1 payer row
+    _payerRows.add(_PayerRow());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final myId = context.read<AuthRepo>().currentUser?.uid;
+      if (myId != null) {
+        setState(() => _payerRows.first.uid = myId);
+      }
     });
   }
 
@@ -45,10 +65,33 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     _amountController.dispose();
     _descriptionController.dispose();
     _amountFocus.dispose();
+    for (final r in _payerRows) {
+      r.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _saveExpense(Group group, bool isAdmin) async {
+  void _addPayerRow() {
+    setState(() => _payerRows.add(_PayerRow()));
+  }
+
+  void _removePayerRow(int index) {
+    if (_payerRows.length <= 1) return;
+    final r = _payerRows.removeAt(index);
+    r.dispose();
+    setState(() {});
+  }
+
+  double _sumPayers() {
+    double sum = 0;
+    for (final r in _payerRows) {
+      final v = double.tryParse(r.amountCtrl.text.trim()) ?? 0;
+      sum += v;
+    }
+    return sum;
+  }
+
+  Future<void> _saveExpense(Group group, bool isAdmin, List<GroupMember> members) async {
     setState(() {
       _isBusy = true;
       _errorMessage = null;
@@ -57,8 +100,39 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     try {
       final amount = double.tryParse(_amountController.text.trim());
       if (amount == null || amount <= 0) throw Exception('Enter a valid amount');
+
       if (_participants.isEmpty) throw Exception('Select at least one participant');
-      if (_paidBy == null) throw Exception('Select who paid');
+
+      // ✅ build payers
+      final payers = <PayerPortion>[];
+      final seen = <String>{};
+
+      for (final r in _payerRows) {
+        final uid = r.uid;
+        final partAmt = double.tryParse(r.amountCtrl.text.trim());
+
+        if (uid == null || uid.trim().isEmpty) continue;
+        if (partAmt == null || partAmt <= 0) continue;
+
+        // avoid duplicates: if same uid entered twice, merge amounts (graceful)
+        if (seen.contains(uid)) {
+          final i = payers.indexWhere((p) => p.uid == uid);
+          payers[i] = PayerPortion(uid: uid, amount: payers[i].amount + partAmt);
+        } else {
+          payers.add(PayerPortion(uid: uid, amount: partAmt));
+          seen.add(uid);
+        }
+      }
+
+      if (payers.isEmpty) throw Exception('Add at least one payer with amount');
+
+      final sumPayers = payers.fold<double>(0, (a, p) => a + p.amount);
+      if ((sumPayers - amount).abs() > 0.01) {
+        throw Exception('Payers total must equal the expense amount');
+      }
+
+      // ✅ Backward compatibility: keep a "primary" paidBy
+      final paidBy = payers.first.uid;
 
       final authRepo = context.read<AuthRepo>();
       final myId = authRepo.currentUser!.uid;
@@ -68,7 +142,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         group: group,
         amount: amount,
         category: _category,
-        paidBy: _paidBy!,
+
+        // legacy param (still required)
+        paidBy: paidBy,
+
+        // ✅ NEW multi-payer list
+        payers: payers,
+
         participants: _participants.toList(),
         description: _descriptionController.text.trim(),
         at: DateTime.now(),
@@ -95,7 +175,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return StreamBuilder<Group>(
       stream: repo.watchGroup(widget.groupId),
       builder: (context, groupSnapshot) {
-        if (!groupSnapshot.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        if (!groupSnapshot.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
         final group = groupSnapshot.data!;
 
         return FutureBuilder<String>(
@@ -110,11 +192,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 builder: (context, membersSnapshot) {
                   final members = membersSnapshot.data ?? [];
 
-                  if (_participants.isNotEmpty && _paidBy != null && !_participants.contains(_paidBy)) {
-                    _paidBy = _participants.first;
+                  // keep selected participants valid if members list changes
+                  _participants.removeWhere((id) => members.every((m) => m.id != id));
+
+                  // keep payer uid valid if member removed (graceful)
+                  for (final r in _payerRows) {
+                    if (r.uid != null && members.every((m) => m.id != r.uid)) {
+                      r.uid = null;
+                    }
                   }
 
-                  final participantMembers = members.where((m) => _participants.contains(m.id)).toList();
+                  final payerTotal = _sumPayers();
+                  final totalAmount = double.tryParse(_amountController.text.trim()) ?? 0;
 
                   return SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -133,7 +222,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
-                            // Hides the "0.00" hint immediately when tapped
                             hintText: _amountFocus.hasFocus ? '' : '0.00',
                             hintStyle: theme.textTheme.displayMedium?.copyWith(
                               color: colorScheme.outlineVariant,
@@ -177,10 +265,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                       prefixIcon: Icon(Icons.category_outlined, size: 20),
                                       contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                                     ),
-                                    items: cats.map((c) => DropdownMenuItem(
-                                        value: c,
-                                        child: Text(c, overflow: TextOverflow.ellipsis)
-                                    )).toList(),
+                                    items: cats
+                                        .map((c) => DropdownMenuItem(
+                                      value: c,
+                                      child: Text(c, overflow: TextOverflow.ellipsis),
+                                    ))
+                                        .toList(),
                                     onChanged: (v) => setState(() => _category = v!),
                                   );
                                 },
@@ -200,26 +290,110 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 28),
 
-                        // --- Payer Selection ---
-                        Text("Paid By", style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary)),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          initialValue: _paidBy,
-                          decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                            hintText: 'Select who paid',
-                          ),
-                          items: participantMembers.map((m) => DropdownMenuItem(value: m.id, child: Text(m.name))).toList(),
-                          onChanged: participantMembers.isEmpty ? null : (v) => setState(() => _paidBy = v),
+                        // ✅ NEW: Multi Payers
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                "Paid By (Multiple Allowed)",
+                                style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _addPayerRow,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Add payer'),
+                            )
+                          ],
                         ),
-                        if (_participants.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8, left: 12),
-                            child: Text('Add participants first to select a payer', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline)),
+                        const SizedBox(height: 10),
+
+                        Container(
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                        const SizedBox(height: 32),
+                          child: Column(
+                            children: [
+                              for (int i = 0; i < _payerRows.length; i++) ...[
+                                if (i != 0) const Divider(height: 1, indent: 16, endIndent: 16),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 6,
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue: _payerRows[i].uid,
+                                          isExpanded: true,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Payer',
+                                            prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                          ),
+                                          items: members
+                                              .map((m) => DropdownMenuItem(
+                                            value: m.id,
+                                            child: Text(m.name, overflow: TextOverflow.ellipsis),
+                                          ))
+                                              .toList(),
+                                          onChanged: (v) => setState(() => _payerRows[i].uid = v),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        flex: 4,
+                                        child: TextField(
+                                          controller: _payerRows[i].amountCtrl,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          onChanged: (_) => setState(() {}),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Amount',
+                                            prefixIcon: Icon(Icons.payments_outlined, size: 18),
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      IconButton(
+                                        tooltip: 'Remove payer',
+                                        onPressed: _payerRows.length <= 1 ? null : () => _removePayerRow(i),
+                                        icon: Icon(Icons.close_rounded, color: _payerRows.length <= 1 ? colorScheme.outlineVariant : colorScheme.error),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        // small summary line (helps user match totals)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Payers total: ${payerTotal.toStringAsFixed(2)}',
+                                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+                              ),
+                            ),
+                            Text(
+                              'Total: ${totalAmount.toStringAsFixed(2)}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: (totalAmount > 0 && (payerTotal - totalAmount).abs() <= 0.01)
+                                    ? colorScheme.primary
+                                    : colorScheme.outline,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 26),
 
                         // --- Participants List ---
                         Text("Split Between", style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary)),
@@ -240,10 +414,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                     v == true ? _participants.add(m.id) : _participants.remove(m.id);
                                   });
                                 },
-                                title: Text(m.name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                                title: Text(
+                                  m.name,
+                                  style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
+                                ),
                                 secondary: CircleAvatar(
                                   backgroundColor: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest,
-                                  child: Text(m.initials, style: TextStyle(color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant)),
+                                  child: Text(
+                                    m.initials,
+                                    style: TextStyle(color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant),
+                                  ),
                                 ),
                               );
                             }).toList(),
@@ -256,13 +436,20 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             margin: const EdgeInsets.only(bottom: 24),
-                            decoration: BoxDecoration(color: colorScheme.errorContainer.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(12)),
-                            child: Text(_errorMessage!, style: TextStyle(color: colorScheme.error), textAlign: TextAlign.center),
+                            decoration: BoxDecoration(
+                              color: colorScheme.errorContainer.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _errorMessage!,
+                              style: TextStyle(color: colorScheme.error),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
 
                         BusyButton(
                           busy: _isBusy,
-                          onPressed: () => _saveExpense(group, isAdmin),
+                          onPressed: () => _saveExpense(group, isAdmin, members),
                           text: isAdmin && group.adminBypass ? 'Save (Auto-approved)' : 'Add Expense',
                         ),
                       ],

@@ -16,7 +16,12 @@ class CreateGroupScreen extends StatefulWidget {
 
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final _name = TextEditingController();
+
   bool _busy = false;
+
+  // ✅ NEW: Group type
+  String _groupType = 'simple'; // 'simple' | 'business'
+
   bool _requireApproval = true;
   bool _adminBypass = true;
   String _approvalMode = 'any';
@@ -38,9 +43,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       _busy = true;
       _err = null;
     });
+
     try {
       final auth = context.read<AuthRepo>();
       final u = auth.currentUser!;
+
       final gid = await context.read<GroupRepo>().createGroup(
         name: _name.text.trim(),
         uid: u.uid,
@@ -48,7 +55,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         requireApproval: _requireApproval,
         adminBypass: _adminBypass,
         approvalMode: _approvalMode,
+        type: _groupType, // ✅ NEW
       );
+
       if (mounted) context.go('/group/$gid');
     } catch (e) {
       setState(() => _err = e.toString());
@@ -60,7 +69,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final cs = theme.colorScheme;
 
     return AppScaffold(
       title: 'Create Group',
@@ -72,9 +81,10 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             // --- Group Identity Section ---
             Text(
               "Group Details",
-              style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary),
+              style: theme.textTheme.labelLarge?.copyWith(color: cs.primary),
             ),
             const SizedBox(height: 12),
+
             TextField(
               controller: _name,
               style: theme.textTheme.bodyLarge,
@@ -84,17 +94,57 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 prefixIcon: Icon(Icons.group_outlined),
               ),
             ),
-            const SizedBox(height: 32),
+
+            const SizedBox(height: 18),
+
+            // ✅ NEW: Group Type selector
+            Text(
+              "Group Type",
+              style: theme.textTheme.labelLarge?.copyWith(color: cs.primary),
+            ),
+            const SizedBox(height: 10),
+
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  RadioListTile<String>(
+                    value: 'simple',
+                    groupValue: _groupType,
+                    onChanged: (v) => setState(() => _groupType = v ?? 'simple'),
+                    title: const Text('Simple'),
+                    subtitle: const Text('Regular expense splitting between members'),
+                    secondary: const Icon(Icons.groups_outlined),
+                  ),
+                  const Divider(indent: 64, height: 1),
+                  RadioListTile<String>(
+                    value: 'business',
+                    groupValue: _groupType,
+                    onChanged: (v) => setState(() => _groupType = v ?? 'business'),
+                    title: const Text('Business'),
+                    subtitle: const Text('Supports income distribution + bills (monthly)'),
+                    secondary: const Icon(Icons.business_center_outlined),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 28),
 
             // --- Settings Section ---
             Text(
               "Management Rules",
-              style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary),
+              style: theme.textTheme.labelLarge?.copyWith(color: cs.primary),
             ),
             const SizedBox(height: 12),
+
             Container(
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerLow,
+                color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -117,6 +167,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 ],
               ),
             ),
+
             const SizedBox(height: 24),
 
             // --- Logic Section ---
@@ -141,7 +192,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Text(
                   _err!,
-                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error),
+                  style: theme.textTheme.bodySmall?.copyWith(color: cs.error),
                   textAlign: TextAlign.center,
                 ),
               ),

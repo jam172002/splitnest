@@ -7,4 +7,6 @@ class FirestorePaths {
   static String groupCategories(String groupId) => 'groups/$groupId/categories';
 
   static String personalTx(String uid) => 'users/$uid/personalTx';
+  static String groupBills(String groupId) => 'groups/$groupId/bills';
+
 }

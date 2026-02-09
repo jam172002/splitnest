@@ -109,7 +109,7 @@ class MemberTransactionDetailScreen extends StatelessWidget {
                                 size: 20,
                               ),
                             ),
-                            title: Text(tx.category.toUpperCase(),
+                            title: Text(tx.category!.toUpperCase(),
                                 style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
