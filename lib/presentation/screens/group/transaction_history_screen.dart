@@ -9,10 +9,27 @@ import '../../../domain/models/tx.dart';
 import '../../../theme/app_colors.dart';
 import '../../widgets/app_scaffold.dart';
 
-class GroupTransactionHistoryScreen extends StatelessWidget {
+class GroupTransactionHistoryScreen extends StatefulWidget {
   final String groupId;
 
   const GroupTransactionHistoryScreen({super.key, required this.groupId});
+
+  @override
+  State<GroupTransactionHistoryScreen> createState() =>
+      _GroupTransactionHistoryScreenState();
+}
+
+class _GroupTransactionHistoryScreenState
+    extends State<GroupTransactionHistoryScreen> {
+  String? payerFilterUid;
+  String? participantFilterUid;
+
+  void _clearFilters() {
+    setState(() {
+      payerFilterUid = null;
+      participantFilterUid = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +38,7 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
     return AppScaffold(
       title: 'Transaction History',
       child: StreamBuilder<List<GroupMember>>(
-        stream: repo.watchMembers(groupId),
+        stream: repo.watchMembers(widget.groupId),
         builder: (context, memSnap) {
           if (!memSnap.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -33,39 +50,60 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
           };
 
           return StreamBuilder<List<GroupTx>>(
-            stream: repo.watchTx(groupId),
+            stream: repo.watchTx(widget.groupId),
             builder: (context, txSnap) {
               if (!txSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final txs = txSnap.data!
-              // keep same behavior as dashboard: approved only
+              final allTxs = txSnap.data!
                   .where((t) => t.status == TxStatus.approved)
                   .toList()
                 ..sort((a, b) => b.at.compareTo(a.at));
 
-              if (txs.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'No transactions yet',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+              // ✅ apply filters
+              final filtered = allTxs.where((tx) {
+                final passPayer = payerFilterUid == null
+                    ? true
+                    : tx.payers.any((p) => p.uid == payerFilterUid);
+
+                final passParticipant = participantFilterUid == null
+                    ? true
+                    : tx.participants.contains(participantFilterUid);
+
+                return passPayer && passParticipant;
+              }).toList();
+
+              return Column(
+                children: [
+                  _FilterBar(
+                    members: members,
+                    memberMap: memberMap,
+                    payerUid: payerFilterUid,
+                    participantUid: participantFilterUid,
+                    onPayerChanged: (uid) => setState(() => payerFilterUid = uid),
+                    onParticipantChanged: (uid) =>
+                        setState(() => participantFilterUid = uid),
+                    onClear: _clearFilters,
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? _EmptyFilteredState(
+                      hasAnyTx: allTxs.isNotEmpty,
+                      onClear: _clearFilters,
+                    )
+                        : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) => _activityTile(
+                        context,
+                        filtered[i],
+                        groupId: widget.groupId,
+                        memberMap: memberMap,
+                      ),
                     ),
                   ),
-                );
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                itemCount: txs.length,
-                itemBuilder: (context, i) => _activityTile(
-                  context,
-                  txs[i],
-                  groupId: groupId,
-                  memberMap: memberMap,
-                ),
+                ],
               );
             },
           );
@@ -74,7 +112,7 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
     );
   }
 
-  // ✅ SAME UI AS YOUR DASHBOARD TILE (copy-compatible)
+  // ✅ SAME UI CARD
   Widget _activityTile(
       BuildContext context,
       GroupTx tx, {
@@ -108,7 +146,7 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ================= TITLE + TOTAL =================
+            // TITLE + TOTAL
             Row(
               children: [
                 Expanded(
@@ -134,7 +172,7 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // ================= PAYERS MULTI ROW =================
+            // PAYERS
             if (tx.payers.isNotEmpty) ...[
               Text(
                 'Paid by',
@@ -175,7 +213,6 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
                 );
               }).toList(),
             ] else ...[
-              // Optional fallback if no payers stored
               Text(
                 'Paid by: —',
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -187,7 +224,7 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // ================= PARTICIPANTS + DATE =================
+            // PARTICIPANTS + DATE
             Row(
               children: [
                 Text(
@@ -212,6 +249,219 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
                   size: 20,
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ================= FILTER UI =================
+
+class _FilterBar extends StatelessWidget {
+  final List<GroupMember> members;
+  final Map<String, GroupMember> memberMap;
+
+  final String? payerUid;
+  final String? participantUid;
+
+  final ValueChanged<String?> onPayerChanged;
+  final ValueChanged<String?> onParticipantChanged;
+  final VoidCallback onClear;
+
+  const _FilterBar({
+    required this.members,
+    required this.memberMap,
+    required this.payerUid,
+    required this.participantUid,
+    required this.onPayerChanged,
+    required this.onParticipantChanged,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    final hasAnyFilter = payerUid != null || participantUid != null;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(
+          bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _DropdownFilter(
+              label: 'Payer',
+              valueUid: payerUid,
+              members: members,
+              memberMap: memberMap,
+              onChanged: onPayerChanged,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _DropdownFilter(
+              label: 'Participant',
+              valueUid: participantUid,
+              members: members,
+              memberMap: memberMap,
+              onChanged: onParticipantChanged,
+            ),
+          ),
+          const SizedBox(width: 10),
+          IconButton(
+            tooltip: 'Clear filters',
+            onPressed: hasAnyFilter ? onClear : null,
+            icon: Icon(
+              Icons.close_rounded,
+              color: hasAnyFilter
+                  ? cs.onSurfaceVariant
+                  : cs.onSurfaceVariant.withValues(alpha: 0.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DropdownFilter extends StatelessWidget {
+  final String label;
+  final String? valueUid;
+  final List<GroupMember> members;
+  final Map<String, GroupMember> memberMap;
+  final ValueChanged<String?> onChanged;
+
+  const _DropdownFilter({
+    required this.label,
+    required this.valueUid,
+    required this.members,
+    required this.memberMap,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    final selectedName =
+    valueUid == null ? 'All' : (memberMap[valueUid!]?.name ?? 'Unknown');
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () async {
+        final picked = await showModalBottomSheet<String?>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          backgroundColor: cs.surface,
+          builder: (ctx) {
+            final items = [...members]
+              ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+            return SafeArea(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  ListTile(
+                    title: Text('All $label'),
+                    trailing:
+                    valueUid == null ? const Icon(Icons.check_rounded) : null,
+                    onTap: () => Navigator.pop(ctx, null),
+                  ),
+                  Divider(color: cs.outlineVariant.withValues(alpha: 0.35)),
+                  ...items.map((m) {
+                    final isSelected = valueUid == m.id;
+                    return ListTile(
+                      title: Text(m.name),
+                      trailing: isSelected ? const Icon(Icons.check_rounded) : null,
+                      onTap: () => Navigator.pop(ctx, m.id),
+                    );
+                  }),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        );
+
+        // picked can be null (All) or uid
+        onChanged(picked);
+      },
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$label: $selectedName',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.expand_more_rounded,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFilteredState extends StatelessWidget {
+  final bool hasAnyTx;
+  final VoidCallback onClear;
+
+  const _EmptyFilteredState({
+    required this.hasAnyTx,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (!hasAnyTx) {
+      return const Center(child: Text('No transactions yet'));
+    }
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'No transactions match your filters.',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: onClear,
+              child: const Text('Clear filters'),
             ),
           ],
         ),
