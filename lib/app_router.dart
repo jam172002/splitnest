@@ -6,6 +6,7 @@ import 'package:splitnest/presentation/screens/group/add_edit_bill_screen.dart';
 import 'package:splitnest/presentation/screens/group/add_income_screen.dart';
 import 'package:splitnest/presentation/screens/group/bills_screen.dart';
 import 'package:splitnest/presentation/screens/group/group_info_screen.dart';
+import 'package:splitnest/presentation/screens/group/group_tx_detail_screen.dart';
 import 'package:splitnest/presentation/screens/personal/add_personal_tx_screen.dart';
 import 'package:splitnest/presentation/screens/personal/personal_lock_wrapper.dart';
 
@@ -64,6 +65,13 @@ final appRouter = GoRouter(
       builder: (context, state) => const RegisterScreen(),
     ),
 
+    GoRoute(
+      path: '/group/:groupId/tx/:txId',
+      builder: (context, state) => GroupTxDetailScreen(
+        groupId: state.pathParameters['groupId']!,
+        txId: state.pathParameters['txId']!,
+      ),
+    ),
     // ✅ Shell should contain ONLY 3 tab root screens
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {

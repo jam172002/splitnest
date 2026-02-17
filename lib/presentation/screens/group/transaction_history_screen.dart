@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../core/format.dart';
 import '../../../data/group_repo.dart';
@@ -29,11 +30,11 @@ class GroupTransactionHistoryScreen extends StatelessWidget {
             itemBuilder: (context, i) {
               final tx = txs[i];
               return ListTile(
+                onTap: () => context.push('/group/$groupId/tx/${tx.id}'),
                 leading: CircleAvatar(
                   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   child: Icon(tx.type == 'settlement' ? Icons.handshake : Icons.receipt_long),
                 ),
-                //title: Text(tx.category),
                 subtitle: Text(Fmt.date(tx.at)),
                 trailing: Text(
                   Fmt.money(tx.amount),

@@ -43,7 +43,7 @@ class SplitNestApp extends StatelessWidget {
             title: 'SplitNest',
             routerConfig: appRouter,
 
-            // ✅ Theme logic stays here only as "use theme from theme.dart"
+            // Theme logic stays here only as "use theme from theme.dart"
             themeMode: themeMode,
             theme: AppTheme.light(context),
             darkTheme: AppTheme.dark(context),

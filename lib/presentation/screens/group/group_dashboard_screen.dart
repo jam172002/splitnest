@@ -44,7 +44,7 @@ class GroupDashboardScreen extends StatelessWidget {
         return AppScaffold(
           title: group.name,
 
-          // ✅ WhatsApp-like clickable title
+          // WhatsApp-like clickable title
           titleWidget: InkWell(
             borderRadius: BorderRadius.circular(10),
             onTap: () => context.push('/group/$groupId/info'),
@@ -329,7 +329,13 @@ class _DashboardBody extends StatelessWidget {
     final cs = theme.colorScheme;
 
     final isSettlement = tx.type == 'settlement';
-    final payerName = memberMap[tx.paidBy]?.name ?? 'Unknown';
+    final payerUid = tx.payers.isNotEmpty
+        ? tx.payers.first.uid
+        : (tx.paidBy ?? '');
+
+    final payerName = payerUid.trim().isEmpty
+        ? 'Unknown'
+        : (memberMap[payerUid]?.name ?? 'Unknown');
 
     final iconBg = isSettlement
         ? cs.tertiaryContainer.withValues(alpha: 0.35)
@@ -337,56 +343,55 @@ class _DashboardBody extends StatelessWidget {
 
     final iconColor = isSettlement ? cs.tertiary : cs.primary;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: iconBg,
-            child: Icon(
-              isSettlement ? Icons.handshake_outlined : Icons.receipt_long_outlined,
-              size: 18,
-              color: iconColor,
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => context.push('/group/$groupId/tx/${tx.id}'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: iconBg,
+              child: Icon(
+                isSettlement ? Icons.handshake_outlined : Icons.receipt_long_outlined,
+                size: 18,
+                color: iconColor,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-               /* Text(
-                  isSettlement ? 'Settlement' : (tx.category),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.1,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 2),
+                  Text(
+                    '$payerName • ${Fmt.date(tx.at)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),*/
-                const SizedBox(height: 2),
-                Text(
-                  '$payerName • ${Fmt.date(tx.at)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.9),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Text(
-            Fmt.money(tx.amount),
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-              color: isSettlement ? cs.tertiary : cs.onSurface,
+            Text(
+              Fmt.money(tx.amount),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: isSettlement ? cs.tertiary : cs.onSurface,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.7), size: 20),
+          ],
+        ),
       ),
     );
   }

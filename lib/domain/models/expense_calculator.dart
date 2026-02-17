@@ -40,4 +40,69 @@ class ExpenseCalculator {
       netBalance: totalPaid - totalShare,
     );
   }
+
+  /// ✅ Single source of truth for balances
+  /// Returns net balance for each member:
+  /// +ve => credited, -ve => owes
+  static Map<String, double> calculateNetByMember({
+    required List<GroupTx> txs,
+    required List<String> memberUids,
+    bool onlyApproved = true,
+  }) {
+    final net = <String, double>{for (final uid in memberUids) uid: 0.0};
+
+    void add(String uid, double delta) {
+      if (uid.trim().isEmpty) return;
+      if (!net.containsKey(uid)) return; // ignore unknown users
+      net[uid] = (net[uid] ?? 0.0) + delta;
+    }
+
+    for (final tx in txs) {
+      if (onlyApproved && tx.status.name != 'approved') continue;
+
+      // EXPENSE / BILL
+      if (tx.type == 'expense' || tx.type == 'bill_instance') {
+        // ✅ payers (multi payer) else legacy paidBy
+        if (tx.payers.isNotEmpty) {
+          for (final p in tx.payers) {
+            add(p.uid, p.amount);
+          }
+        } else if ((tx.paidBy ?? '').trim().isNotEmpty) {
+          add(tx.paidBy!, tx.amount);
+        }
+
+        // ✅ participants (if empty, assume all members like dashboard usually does)
+        final parts = tx.participants.isNotEmpty ? tx.participants : memberUids;
+        if (parts.isNotEmpty) {
+          final each = tx.amount / parts.length;
+          for (final uid in parts) {
+            add(uid, -each);
+          }
+        }
+      }
+
+      // SETTLEMENT
+      else if (tx.type == 'settlement') {
+        final from = tx.fromUid ?? '';
+        final to = tx.toUid ?? '';
+        add(from, tx.amount);
+        add(to, -tx.amount);
+      }
+
+      // INCOME
+      else if (tx.type == 'income') {
+        if (tx.distributeTo.isNotEmpty) {
+          tx.distributeTo.forEach((uid, amt) => add(uid, amt));
+        } else if (tx.payers.isNotEmpty) {
+          for (final p in tx.payers) {
+            add(p.uid, p.amount);
+          }
+        } else if ((tx.paidBy ?? '').trim().isNotEmpty) {
+          add(tx.paidBy!, tx.amount);
+        }
+      }
+    }
+
+    return net;
+  }
 }

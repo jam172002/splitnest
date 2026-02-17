@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-
+import '../../../core/format.dart';
+import '../../../domain/models/expense_calculator.dart';
+import '../../../domain/models/tx.dart';
 import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
 import '../../../domain/models/group.dart';
@@ -10,7 +12,6 @@ import '../../../domain/models/group_member.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/busy_button.dart';
 import '../../../theme/app_colors.dart';
-import 'group_balances_screen.dart';
 
 class GroupInfoScreen extends StatelessWidget {
   final String groupId;
@@ -75,36 +76,23 @@ class GroupInfoScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: stroke),
                   ),
-                  child: Row(
-                    children: [
-                      _Avatar(letter: group.name.isNotEmpty ? group.name[0].toUpperCase() : 'G'),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              group.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                color: text,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.2,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Group ID: $groupId',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: subText,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                  child: Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.name,
+                          maxLines: 1,
+                          //overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: text,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.2,
+                          ),
                         ),
-                      ),
-                    ],
+
+                      ],
+                    ),
                   ),
                 ),
 
@@ -170,23 +158,7 @@ class GroupInfoScreen extends StatelessWidget {
                 // Actions
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (c) => GroupBalancesScreen(groupId: groupId, groupName: group.name),
-                          ),
-                        ),
-                        icon: const Icon(Icons.analytics_outlined),
-                        label: const Text('Statistics'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.green,
-                          side: BorderSide(color: AppColors.green.withValues(alpha: 0.55)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
+
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => context.pushNamed(
@@ -239,55 +211,127 @@ class GroupInfoScreen extends StatelessWidget {
                         final myRole = roleSnap.data ?? 'member';
                         final isAdmin = myRole == 'admin';
 
-                        return ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: members.length,
-                          itemBuilder: (context, index) {
-                            final m = members[index];
-                            final memberIsAdmin = m.role == 'admin';
+                        return StreamBuilder<List<GroupTx>>(
+                          stream: repo.watchTx(groupId),
+                          builder: (context, txSnap) {
+                            if (!txSnap.hasData) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 18),
+                                child: Center(child: CircularProgressIndicator()),
+                              );
+                            }
 
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              decoration: BoxDecoration(
-                                color: card,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: stroke),
-                              ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                leading: CircleAvatar(
-                                  backgroundColor: memberIsAdmin
-                                      ? AppColors.green.withValues(alpha: isDark ? 0.22 : 0.14)
-                                      : (isDark
-                                      ? Colors.white.withValues(alpha: 0.06)
-                                      : Colors.black.withValues(alpha: 0.05)),
-                                  child: Text(
-                                    m.initials,
-                                    style: TextStyle(color: text, fontWeight: FontWeight.w900),
-                                  ),
-                                ),
-                                title: Text(m.name, style: TextStyle(color: text, fontWeight: FontWeight.w800)),
-                                subtitle: Text(
-                                  'Joined ${m.joinedAt.day}/${m.joinedAt.month}/${m.joinedAt.year}',
-                                  style: theme.textTheme.bodySmall?.copyWith(color: subText, fontWeight: FontWeight.w600),
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _RolePill(
-                                      text: m.role.toUpperCase(),
-                                      isAdmin: memberIsAdmin,
-                                      isDark: isDark,
+                            final txs = txSnap.data!;
+                            final memberUids = members.map((m) => m.id).toList();
+
+                            final netMap = <String, double>{};
+
+                            for (final m in members) {
+                              final summary = ExpenseCalculator.calculateMemberSummary(txs, m.id);
+                              netMap[m.id] = summary.netBalance;
+                            }
+
+                            // Sort members for balance display (highest credit first)
+                            final sortedByNet = [...members]..sort((a, b) {
+                              final na = netMap[a.id] ?? 0.0;
+                              final nb = netMap[b.id] ?? 0.0;
+                              return nb.compareTo(na);
+                            });
+
+                            Widget balancesSection() {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 14),
+
+
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: card,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(color: stroke),
                                     ),
-                                    if (isAdmin && !memberIsAdmin)
-                                      IconButton(
-                                        icon: Icon(Icons.person_remove_outlined, color: Colors.red.shade400),
-                                        onPressed: () => _confirmDelete(context, repo, groupId, m.id, m.name),
+                                    child: ListView.separated(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: sortedByNet.length,
+                                      separatorBuilder: (_, __) => Divider(
+                                        height: 1,
+                                        color: stroke.withValues(alpha: 0.6),
                                       ),
-                                  ],
-                                ),
-                              ),
+                                      itemBuilder: (context, i) {
+                                        final m = sortedByNet[i];
+                                        final net = netMap[m.id] ?? 0.0;
+
+                                        final isCredit = net >= 0;
+                                        final color = isCredit ? AppColors.green : Colors.red.shade400;
+                                        final label = isCredit ? 'Credited' : 'Owe';
+                                        final roleText = (m.role == 'admin') ? 'Admin' : 'Member';
+
+                                        return ListTile(
+                                          leading: CircleAvatar(
+                                            backgroundColor: color.withValues(alpha: isDark ? 0.18 : 0.12),
+                                            child: Text(m.initials, style: TextStyle(color: color, fontWeight: FontWeight.w900)),
+                                          ),
+                                          title: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  m.name,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(color: text, fontWeight: FontWeight.w900),
+                                                ),
+                                              ),
+                                              Text(
+                                                roleText,
+                                                style: theme.textTheme.bodySmall?.copyWith(
+                                                  color: subText,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          subtitle: Text(
+                                            label,
+                                            style: theme.textTheme.bodySmall?.copyWith(
+                                              color: color,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                Fmt.money(net.abs()),
+                                                style: theme.textTheme.titleMedium?.copyWith(
+                                                  color: color,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                              if ((myRole == 'admin') && m.role != 'admin')
+                                                IconButton(
+                                                  icon: Icon(Icons.person_remove_outlined, color: Colors.red.shade400),
+                                                  onPressed: () => _confirmDelete(context, repo, groupId, m.id, m.name),
+                                                ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 18),
+                                ],
+                              );
+                            }
+
+                            // ✅ Return both sections properly
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                balancesSection(),
+                              ],
                             );
                           },
                         );
@@ -384,6 +428,8 @@ class GroupInfoScreen extends StatelessWidget {
       ),
     );
   }
+
+
 }
 
 class _Avatar extends StatelessWidget {
