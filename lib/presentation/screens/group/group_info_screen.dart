@@ -67,90 +67,255 @@ class GroupInfoScreen extends StatelessWidget {
                   : null,
 
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ================= HEADER =================
+                    // ================= WHATSAPP-LIKE HEADER =================
                     Container(
-                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: card,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: stroke),
                       ),
-                      child: Row(
-                        children: [
-                          _Avatar(letter: group.name.isNotEmpty ? group.name[0].toUpperCase() : 'G'),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  group.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    color: text,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.2,
-                                  ),
-                                ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                        child: Column(
+                          children: [
 
-                              ],
+
+                            // big centered avatar
+                            Container(
+                              width: 104,
+                              height: 104,
+                              decoration: BoxDecoration(
+                                color: AppColors.green.withValues(alpha: isDark ? 0.18 : 0.12),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors.green.withValues(alpha: 0.35),
+                                  width: 1.2,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.groups_rounded,
+                                size: 46,
+                                color: AppColors.green,
+                              ),
                             ),
-                          ),
-                        ],
+
+                            const SizedBox(height: 12),
+
+                            Text(
+                              group.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                color: text,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.2,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+
+                            const SizedBox(height: 6),
+
+                            // "Group • X members"
+                            StreamBuilder<List<GroupMember>>(
+                              stream: repo.watchMembers(groupId),
+                              builder: (context, memCountSnap) {
+                                final count = memCountSnap.data?.length ?? 0;
+                                return Text(
+                                  'Group • $count members',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: subText,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                );
+                              },
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            // WhatsApp-like quick actions row: Audio / Video / Add / Search
+                            Container(
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.04)
+                                    : Colors.black.withValues(alpha: 0.03),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: stroke.withValues(alpha: 0.9)),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _QuickActionTile(
+                                      icon: Icons.verified_user_outlined,
+                                      label: 'Approval',
+                                      onTap: () => context.pushNamed( 'group_settings', pathParameters: {'groupId': groupId}, ),
+                                    ),
+                                  ),
+
+                                  _VLine(color: stroke),
+                                  Expanded(
+                                    child: _QuickActionTile(
+                                      icon: Icons.person_add_alt_1_rounded,
+                                      label: 'Add',
+                                      onTap:() => _showInviteSheet(context, groupId),
+                                    ),
+                                  ),
+                                  _VLine(color: stroke),
+                                  Expanded(
+                                    child: _QuickActionTile(
+                                      icon: Icons.search_rounded,
+                                      label: 'Search',
+                                      onTap: () => context.push('/group/$groupId/search'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
 
+                    const SizedBox(height: 12),
 
-                    const SizedBox(height: 14),
-
-                    // ================= ACTIONS (REMOVE INVITE BUTTON, APPROVAL -> SETTINGS) =================
-                    Container(
-                      decoration: BoxDecoration(
-                        color: card,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: stroke),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _ActionTile(
-                              icon: Icons.search_rounded,
-                              label: 'Search',
-                              onTap: () => context.push('/group/$groupId/search'),
+// ================= Combined Expenses (FIXED) =================
+                    StreamBuilder<List<GroupTx>>(
+                      stream: repo.watchTx(groupId),
+                      builder: (context, txSnap) {
+                        if (!txSnap.hasData) {
+                          return _SectionCard(
+                            isDark: isDark,
+                            bg: card,
+                            stroke: stroke,
+                            child: const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(child: CircularProgressIndicator()),
                             ),
-                          ),
-                          Container(width: 1, height: 58, color: stroke.withValues(alpha: 0.6)),
-                          Expanded(
-                            child: _ActionTile(
-                              icon: Icons.verified_user_outlined,
-                              label: 'Approvals',
-                              onTap: () => context.pushNamed(
-                                'group_settings',
-                                pathParameters: {'groupId': groupId},
+                          );
+                        }
+
+                        final txs = txSnap.data!;
+
+                        // ✅ Total approved expenses
+                        final approvedExpenses = txs.where((t) {
+                          final isApproved = t.status == TxStatus.approved;
+                          final isExpense = (t.type == 'expense'); // keep your existing logic
+                          return isApproved && isExpense;
+                        }).toList();
+
+                        final totalExpense = approvedExpenses.fold<double>(
+                          0.0,
+                              (sum, t) => sum + t.amount,
+                        );
+
+                        // ✅ Optional quick chips (top 3 categories preview)
+                        final Map<String, double> byCategory = {};
+                        for (final t in approvedExpenses) {
+                          final cat = (t.category == null || (t.category ?? '').trim().isEmpty)
+                              ? 'Uncategorized'
+                              : t.category!.trim();
+                          byCategory[cat] = (byCategory[cat] ?? 0) + t.amount;
+                        }
+
+                        final topCats = byCategory.entries.toList()
+                          ..sort((a, b) => b.value.compareTo(a.value));
+                        final previewCats = topCats.take(3).toList();
+
+                        return _SectionCard(
+                          isDark: isDark,
+                          bg: card,
+                          stroke: stroke,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: () => context.push('/group/$groupId/combined'),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Header row
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'Combined Expenses',
+                                          style: theme.textTheme.titleSmall?.copyWith(
+                                            color: text,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        Fmt.money(totalExpense),
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          color: AppColors.green,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Icon(Icons.chevron_right_rounded, color: subText),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 10),
+
+                                  // Preview chips (optional but nice)
+                                  if (previewCats.isEmpty)
+                                    Text(
+                                      'No approved expenses yet',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: subText,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    )
+                                  else
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        for (final e in previewCats)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: isDark
+                                                  ? Colors.white.withValues(alpha: 0.05)
+                                                  : Colors.black.withValues(alpha: 0.04),
+                                              borderRadius: BorderRadius.circular(999),
+                                              border: Border.all(
+                                                color: stroke.withValues(alpha: 0.9),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${e.key} • ${Fmt.money(e.value)}',
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                color: subText,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                ],
                               ),
                             ),
                           ),
-                          Container(width: 1, height: 58, color: stroke.withValues(alpha: 0.6)),
-                          Expanded(
-                            child: _ActionTile(
-                              icon: Icons.qr_code_rounded,
-                              label: 'Invite',
-                              onTap: () => _showInviteSheet(context, groupId),
-
-                            ),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
 
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 10),
 
-                    // ================= MEMBERS + BALANCES =================
+
+
                     Text(
                       'Members',
                       style: theme.textTheme.titleLarge?.copyWith(
@@ -173,7 +338,10 @@ class GroupInfoScreen extends StatelessWidget {
 
                         final members = memSnap.data!;
                         if (members.isEmpty) {
-                          return Text('No members found', style: theme.textTheme.bodyMedium?.copyWith(color: subText));
+                          return Text(
+                            'No members found',
+                            style: theme.textTheme.bodyMedium?.copyWith(color: subText),
+                          );
                         }
 
                         return StreamBuilder<List<GroupTx>>(
@@ -216,7 +384,8 @@ class GroupInfoScreen extends StatelessWidget {
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: sorted.length,
-                                separatorBuilder: (_, __) => Divider(height: 1, color: stroke.withValues(alpha: 0.7)),
+                                separatorBuilder: (_, __) =>
+                                    Divider(height: 1, color: stroke.withValues(alpha: 0.7)),
                                 itemBuilder: (context, index) {
                                   final m = sorted[index];
                                   final net = netMap[m.id] ?? 0.0;
@@ -272,8 +441,10 @@ class GroupInfoScreen extends StatelessWidget {
                                         ),
                                         if (isAdmin && !m.isAdmin)
                                           IconButton(
-                                            icon: Icon(Icons.person_remove_outlined, color: Colors.red.shade400),
-                                            onPressed: () => _confirmDelete(context, repo, groupId, m.id, m.name),
+                                            icon: Icon(Icons.person_remove_outlined,
+                                                color: Colors.red.shade400),
+                                            onPressed: () =>
+                                                _confirmDelete(context, repo, groupId, m.id, m.name),
                                           ),
                                       ],
                                     ),
@@ -497,11 +668,27 @@ class GroupInfoScreen extends StatelessWidget {
   }
 }
 
-class _ActionTile extends StatelessWidget {
+// ================= UI HELPERS (WHATSAPP-LIKE) =================
+
+class _VLine extends StatelessWidget {
+  final Color color;
+  const _VLine({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 46,
+      color: color.withValues(alpha: 0.7),
+    );
+  }
+}
+
+class _QuickActionTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _ActionTile({
+  const _QuickActionTile({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -511,57 +698,51 @@ class _ActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final sub = isDark ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.62);
+    final sub = isDark ? Colors.white.withValues(alpha: 0.74) : Colors.black.withValues(alpha: 0.64);
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: AppColors.green),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: sub,
-                fontWeight: FontWeight.w800,
-              ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: AppColors.green),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: sub,
+              fontWeight: FontWeight.w800,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _Avatar extends StatelessWidget {
-  final String letter;
-  const _Avatar({required this.letter});
+class _SectionCard extends StatelessWidget {
+  final bool isDark;
+  final Color bg;
+  final Color stroke;
+  final Widget child;
+
+  const _SectionCard({
+    required this.isDark,
+    required this.bg,
+    required this.stroke,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = AppColors.green.withValues(alpha: isDark ? 0.22 : 0.14);
-
     return Container(
-      width: 52,
-      height: 52,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
         color: bg,
-        border: Border.all(color: AppColors.green.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: stroke),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        letter,
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-          color: AppColors.green,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
+      child: child,
     );
   }
 }
+
