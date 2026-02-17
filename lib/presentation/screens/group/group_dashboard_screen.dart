@@ -328,68 +328,127 @@ class _DashboardBody extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    final isSettlement = tx.type == 'settlement';
-    final payerUid = tx.payers.isNotEmpty
-        ? tx.payers.first.uid
-        : (tx.paidBy ?? '');
+    final title = (tx.category == null || tx.category!.trim().isEmpty)
+        ? (tx.type == 'settlement' ? 'Settlement' : 'Expense')
+        : tx.category!.trim();
 
-    final payerName = payerUid.trim().isEmpty
-        ? 'Unknown'
-        : (memberMap[payerUid]?.name ?? 'Unknown');
-
-    final iconBg = isSettlement
-        ? cs.tertiaryContainer.withValues(alpha: 0.35)
-        : cs.primaryContainer.withValues(alpha: 0.45);
-
-    final iconColor = isSettlement ? cs.tertiary : cs.primary;
+    final total = tx.amount;
+    final participantsCount = tx.participants.length;
+    final dateText = Fmt.date(tx.at);
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => context.push('/group/$groupId/tx/${tx.id}'),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: cs.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.35),
+          ),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: iconBg,
-              child: Icon(
-                isSettlement ? Icons.handshake_outlined : Icons.receipt_long_outlined,
-                size: 18,
-                color: iconColor,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 2),
-                  Text(
-                    '$payerName • ${Fmt.date(tx.at)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.9),
-                      fontWeight: FontWeight.w600,
+
+            // ================= TITLE + TOTAL =================
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.2,
                     ),
                   ),
-                ],
-              ),
+                ),
+                Text(
+                  Fmt.money(total),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.green,
+                  ),
+                ),
+              ],
             ),
-            Text(
-              Fmt.money(tx.amount),
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: isSettlement ? cs.tertiary : cs.onSurface,
+
+            const SizedBox(height: 10),
+
+            // ================= PAYERS MULTI ROW =================
+            if (tx.payers.isNotEmpty) ...[
+              Text(
+                'Paid by',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                ),
               ),
+              const SizedBox(height: 6),
+
+              ...tx.payers.map((payer) {
+                final payerName =
+                    memberMap[payer.uid]?.name ?? 'Unknown';
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          payerName,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        Fmt.money(payer.amount),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ],
+
+            const SizedBox(height: 10),
+
+            // ================= PARTICIPANTS + DATE =================
+            Row(
+              children: [
+                Text(
+                  '$participantsCount participant${participantsCount == 1 ? '' : 's'}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '• $dateText',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                  size: 20,
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.7), size: 20),
           ],
         ),
       ),
