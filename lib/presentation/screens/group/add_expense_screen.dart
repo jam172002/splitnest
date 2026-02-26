@@ -6,7 +6,7 @@ import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
 import '../../../domain/models/group.dart';
 import '../../../domain/models/group_member.dart';
-import '../../../domain/models/tx.dart'; // ✅ for PayerPortion
+import '../../../domain/models/tx.dart'; //  for PayerPortion
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/busy_button.dart';
 
@@ -21,7 +21,6 @@ class AddExpenseScreen extends StatefulWidget {
 class _PayerRow {
   String? uid;
   final TextEditingController amountCtrl = TextEditingController();
-
   void dispose() => amountCtrl.dispose();
 }
 
@@ -35,8 +34,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   String _category = 'breakfast';
   final Set<String> _participants = {};
 
-  // ✅ NEW: multi payer rows
+  //  Multi payer rows
   final List<_PayerRow> _payerRows = [];
+
+  //  NEW: Unequal split
+  bool _unequalSplit = false;
+
+  // For per-member share inputs (only used when _unequalSplit == true)
+  final Map<String, TextEditingController> _shareCtrls = {};
 
   bool _isBusy = false;
   String? _errorMessage;
@@ -49,7 +54,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (mounted) setState(() {});
     });
 
-    // ✅ start with 1 payer row
+    //  start with 1 payer row
     _payerRows.add(_PayerRow());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -68,12 +73,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     for (final r in _payerRows) {
       r.dispose();
     }
+    for (final c in _shareCtrls.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  void _addPayerRow() {
-    setState(() => _payerRows.add(_PayerRow()));
-  }
+  void _addPayerRow() => setState(() => _payerRows.add(_PayerRow()));
 
   void _removePayerRow(int index) {
     if (_payerRows.length <= 1) return;
@@ -91,6 +97,80 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return sum;
   }
 
+  TextEditingController _shareCtrlFor(String uid) {
+    return _shareCtrls.putIfAbsent(uid, () => TextEditingController());
+  }
+
+  void _cleanupShareCtrls(List<GroupMember> members) {
+    final valid = members.map((m) => m.id).toSet();
+    final toRemove = _shareCtrls.keys.where((k) => !valid.contains(k)).toList();
+    for (final k in toRemove) {
+      _shareCtrls[k]?.dispose();
+      _shareCtrls.remove(k);
+    }
+  }
+
+  /// Builds participantShares if unequal split is enabled.
+  /// Rule:
+  /// - You can enter a fixed amount for any selected participant(s)
+  /// - Remaining amount is split equally among the other selected participants
+  /// - If you fill all selected participants, their sum must equal total
+  Map<String, double>? _buildParticipantShares({
+    required double totalAmount,
+    required List<String> selectedParticipantUids,
+  }) {
+    if (!_unequalSplit) return null;
+
+    final parts = selectedParticipantUids;
+    if (parts.isEmpty) return null;
+
+    const tol = 0.01;
+
+    final fixed = <String, double>{};
+    for (final uid in parts) {
+      final raw = _shareCtrls[uid]?.text.trim() ?? '';
+      if (raw.isEmpty) continue;
+      final v = double.tryParse(raw);
+      if (v == null) continue;
+      if (v > 0) fixed[uid] = v;
+    }
+
+    final fixedSum = fixed.values.fold<double>(0.0, (a, b) => a + b);
+
+    if (fixedSum - totalAmount > tol) {
+      throw Exception('Participants total cannot exceed the expense amount');
+    }
+
+    final remainingUids = parts.where((u) => !fixed.containsKey(u)).toList();
+    final remaining = totalAmount - fixedSum;
+
+    final shares = <String, double>{};
+
+    // If all have values, sum must match total
+    if (remainingUids.isEmpty) {
+      if ((fixedSum - totalAmount).abs() > tol) {
+        throw Exception('Participants total must equal the expense amount');
+      }
+      shares.addAll(fixed);
+      return shares;
+    }
+
+    // Distribute remaining equally to others
+    final each = remaining / remainingUids.length;
+    for (final uid in remainingUids) {
+      shares[uid] = each;
+    }
+    shares.addAll(fixed);
+
+    // Final safety: sum must match total
+    final sumShares = shares.values.fold<double>(0.0, (a, b) => a + b);
+    if ((sumShares - totalAmount).abs() > tol) {
+      throw Exception('Participants distribution does not match total');
+    }
+
+    return shares;
+  }
+
   Future<void> _saveExpense(Group group, bool isAdmin, List<GroupMember> members) async {
     setState(() {
       _isBusy = true;
@@ -103,7 +183,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
       if (_participants.isEmpty) throw Exception('Select at least one participant');
 
-      // ✅ build payers
+      //  build payers
       final payers = <PayerPortion>[];
       final seen = <String>{};
 
@@ -131,7 +211,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         throw Exception('Payers total must equal the expense amount');
       }
 
-      // ✅ Backward compatibility: keep a "primary" paidBy
+      //  participant shares (optional)
+      final participantShares = _buildParticipantShares(
+        totalAmount: amount,
+        selectedParticipantUids: _participants.toList(),
+      );
+
+      //  Backward compatibility: keep a "primary" paidBy
       final paidBy = payers.first.uid;
 
       final authRepo = context.read<AuthRepo>();
@@ -146,10 +232,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         // legacy param (still required)
         paidBy: paidBy,
 
-        // ✅ NEW multi-payer list
+        //  NEW multi-payer list
         payers: payers,
 
         participants: _participants.toList(),
+
+        //  NEW: unequal split (if enabled)
+        participantShares: participantShares,
+
         description: _descriptionController.text.trim(),
         at: DateTime.now(),
         createdBy: myId,
@@ -202,8 +292,25 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     }
                   }
 
+                  // cleanup share controllers
+                  _cleanupShareCtrls(members);
+
                   final payerTotal = _sumPayers();
                   final totalAmount = double.tryParse(_amountController.text.trim()) ?? 0;
+
+                  // preview participant shares when unequal split is on
+                  Map<String, double>? previewShares;
+                  String? previewErr;
+                  if (_unequalSplit && totalAmount > 0 && _participants.isNotEmpty) {
+                    try {
+                      previewShares = _buildParticipantShares(
+                        totalAmount: totalAmount,
+                        selectedParticipantUids: _participants.toList(),
+                      );
+                    } catch (e) {
+                      previewErr = e.toString().replaceFirst('Exception: ', '');
+                    }
+                  }
 
                   return SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -221,6 +328,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             color: colorScheme.primary,
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() {}),
                           decoration: InputDecoration(
                             hintText: _amountFocus.hasFocus ? '' : '0.00',
                             hintStyle: theme.textTheme.displayMedium?.copyWith(
@@ -292,7 +400,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         ),
                         const SizedBox(height: 28),
 
-                        // ✅ NEW: Multi Payers
+                        //  Multi Payers
                         Row(
                           children: [
                             Expanded(
@@ -360,7 +468,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                       IconButton(
                                         tooltip: 'Remove payer',
                                         onPressed: _payerRows.length <= 1 ? null : () => _removePayerRow(i),
-                                        icon: Icon(Icons.close_rounded, color: _payerRows.length <= 1 ? colorScheme.outlineVariant : colorScheme.error),
+                                        icon: Icon(
+                                          Icons.close_rounded,
+                                          color: _payerRows.length <= 1 ? colorScheme.outlineVariant : colorScheme.error,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -396,8 +507,35 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         const SizedBox(height: 26),
 
                         // --- Participants List ---
-                        Text("Split Between", style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary)),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                "Split Between",
+                                style: theme.textTheme.labelLarge?.copyWith(color: colorScheme.primary),
+                              ),
+                            ),
+                            //  Unequal distribution toggle
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Unequal',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Switch(
+                                  value: _unequalSplit,
+                                  onChanged: (v) => setState(() => _unequalSplit = v),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 12),
+
                         Container(
                           decoration: BoxDecoration(
                             color: colorScheme.surfaceContainerLow,
@@ -406,29 +544,107 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           child: Column(
                             children: members.map((m) {
                               final isSelected = _participants.contains(m.id);
-                              return CheckboxListTile(
-                                value: isSelected,
-                                checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                onChanged: (v) {
-                                  setState(() {
-                                    v == true ? _participants.add(m.id) : _participants.remove(m.id);
-                                  });
-                                },
-                                title: Text(
-                                  m.name,
-                                  style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-                                ),
-                                secondary: CircleAvatar(
-                                  backgroundColor: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest,
-                                  child: Text(
-                                    m.initials,
-                                    style: TextStyle(color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant),
+                              final shareCtrl = _shareCtrlFor(m.id);
+
+                              return Column(
+                                children: [
+                                  CheckboxListTile(
+                                    value: isSelected,
+                                    checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                    onChanged: (v) {
+                                      setState(() {
+                                        if (v == true) {
+                                          _participants.add(m.id);
+                                        } else {
+                                          _participants.remove(m.id);
+                                          // optional: clear share when unselected
+                                          shareCtrl.text = '';
+                                        }
+                                      });
+                                    },
+                                    title: Text(
+                                      m.name,
+                                      style: TextStyle(
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                    secondary: CircleAvatar(
+                                      backgroundColor:
+                                      isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest,
+                                      child: Text(
+                                        m.initials,
+                                        style: TextStyle(
+                                          color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
+
+                                  //  NEW UI: per-user expense input (only when unequal split + selected)
+                                  if (_unequalSplit && isSelected)
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              'Amount for ${m.name}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                color: colorScheme.onSurfaceVariant,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          SizedBox(
+                                            width: 140,
+                                            child: TextField(
+                                              controller: shareCtrl,
+                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                              onChanged: (_) => setState(() {}),
+                                              decoration: const InputDecoration(
+                                                labelText: 'Share',
+                                                prefixIcon: Icon(Icons.pie_chart_outline_rounded, size: 18),
+                                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                  // divider
+                                  if (m.id != members.last.id)
+                                    const Divider(height: 1, indent: 16, endIndent: 16),
+                                ],
                               );
                             }).toList(),
                           ),
                         ),
+
+                        //  Preview (only when unequal)
+                        if (_unequalSplit) ...[
+                          const SizedBox(height: 10),
+                          if (previewErr != null)
+                            Text(
+                              previewErr,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.error,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
+                          else if (previewShares != null)
+                            Text(
+                              'Auto split preview: ${previewShares.entries.take(3).map((e) => '${members.firstWhere((m) => m.id == e.key, orElse: () => GroupMember(id: e.key, name: e.key, role: "member", joinedAt: DateTime.now())).name}: ${e.value.toStringAsFixed(2)}').join(' • ')}'
+                                  '${previewShares.length > 3 ? ' …' : ''}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.outline,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                        ],
 
                         const SizedBox(height: 32),
 

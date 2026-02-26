@@ -267,13 +267,14 @@ class GroupRepo {
     required double amount,
     required String category,
 
-    // legacy param (your current UI)
     required String paidBy,
-
-    // NEW optional: multi-payer
     List<PayerPortion>? payers,
 
     required List<String> participants,
+
+    // ✅ NEW (optional): if null/empty => equal split
+    Map<String, double>? participantShares,
+
     String? description,
     required DateTime at,
     required String createdBy,
@@ -292,19 +293,28 @@ class GroupRepo {
         .collection('tx')
         .doc();
 
-    // ✅ Backward compatible: if payers not provided, build from paidBy
     final finalPayers = (payers != null && payers.isNotEmpty)
         ? payers
         : [PayerPortion(uid: paidBy, amount: amount)];
+
+    // ✅ NEW: normalize/compute shares (partial allowed)
+    final shares = (participantShares != null && participantShares.isNotEmpty)
+        ? _buildParticipantShares(
+      totalAmount: amount,
+      participants: participants,
+      partial: participantShares,
+    )
+        : const <String, double>{};
 
     final tx = GroupTx(
       id: ref.id,
       type: 'expense',
       amount: amount,
       category: category,
-      paidBy: paidBy, // keep legacy field
+      paidBy: paidBy,
       payers: finalPayers,
       participants: participants,
+      participantShares: shares, // ✅ NEW
       description: description?.trim().isNotEmpty == true ? description!.trim() : null,
       at: at,
       status: status,
@@ -451,38 +461,40 @@ class GroupRepo {
       // ✅ only approved affects balances
       if (tx.status != TxStatus.approved) continue;
 
+      // ================= EXPENSE / BILL =================
       if (tx.type == 'expense' || tx.type == 'bill_instance') {
         if (tx.amount <= 0 || tx.participants.isEmpty) continue;
 
-        // payers get credit
+        // ✅ credit payers (multi-payer supported)
         for (final p in tx.payers) {
           if (p.amount > 0) add(p.uid, p.amount);
         }
 
-        // participants share debit
-        final share = tx.amount / tx.participants.length;
-        for (final uid in tx.participants) {
-          add(uid, -share);
+        // ✅ Unequal distribution support
+        if (tx.participantShares.isNotEmpty) {
+          for (final uid in tx.participants) {
+            final share = tx.participantShares[uid] ?? 0.0;
+            if (share > 0) add(uid, -share);
+          }
+        }
+        // ✅ Legacy equal split
+        else {
+          final share = tx.amount / tx.participants.length;
+          for (final uid in tx.participants) {
+            add(uid, -share);
+          }
         }
       }
 
+      // ================= INCOME =================
       if (tx.type == 'income') {
-        // distributed immediately (uid -> amount)
         tx.distributeTo.forEach((uid, amt) {
           if (amt > 0) add(uid, amt);
         });
       }
 
-      if (tx.type == 'settlement') {
-        if (tx.fromUid == null || tx.toUid == null) continue;
-        if (tx.amount <= 0) continue;
-
-        // from pays -> less debt => +amount
-        add(tx.fromUid!, tx.amount);
-
-        // to receives -> less credit => -amount
-        add(tx.toUid!, -tx.amount);
-      }
+      // ❌ SETTLEMENT COMPLETELY IGNORED
+      // We are not using settlement feature anymore.
     }
 
     return balances;
@@ -870,5 +882,63 @@ class GroupRepo {
         .update({
       'payers': payers.map((e) => e.toMap()).toList(),
     });
+  }
+
+  Map<String, double> _buildParticipantShares({
+    required double totalAmount,
+    required List<String> participants,
+    required Map<String, double> partial, // uid -> amount (some may be missing)
+  }) {
+    final cleanParticipants = participants.where((e) => e.trim().isNotEmpty).toList();
+    if (cleanParticipants.isEmpty) return {};
+
+    final out = <String, double>{};
+
+    // sanitize partial inputs
+    double specifiedSum = 0.0;
+    final specifiedUids = <String>{};
+
+    for (final entry in partial.entries) {
+      final uid = entry.key.trim();
+      final amt = entry.value;
+      if (uid.isEmpty) continue;
+      if (!cleanParticipants.contains(uid)) continue;
+      if (amt <= 0) continue;
+
+      out[uid] = amt;
+      specifiedSum += amt;
+      specifiedUids.add(uid);
+    }
+
+    final remainingUids = cleanParticipants.where((u) => !specifiedUids.contains(u)).toList();
+    final remaining = totalAmount - specifiedSum;
+
+    if (remaining < -0.01) {
+      throw Exception('Participant shares exceed total amount.');
+    }
+
+    if (remainingUids.isEmpty) {
+      // all specified => must match total
+      if (remaining.abs() > 0.01) {
+        throw Exception('Participant shares must equal total amount.');
+      }
+      return out;
+    }
+
+    // distribute remaining equally
+    final each = remaining / remainingUids.length;
+    for (final uid in remainingUids) {
+      out[uid] = (out[uid] ?? 0.0) + each;
+    }
+
+    // tiny rounding fix: ensure sum == totalAmount
+    final sum = out.values.fold<double>(0.0, (a, b) => a + b);
+    final diff = totalAmount - sum;
+    if (diff.abs() > 0.01) {
+      final first = remainingUids.isNotEmpty ? remainingUids.first : out.keys.first;
+      out[first] = (out[first] ?? 0.0) + diff;
+    }
+
+    return out;
   }
 }

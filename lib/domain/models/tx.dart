@@ -39,8 +39,10 @@ class GroupTx {
   /// Participants for expense/bill splitting
   final List<String> participants;
 
+  /// NEW: Unequal split (uid -> amount owed). If null/empty => equal split.
+  final Map<String, double> participantShares;
+
   /// NEW: for business income distribution (uid -> amount)
-  /// (We use AMOUNTS, not ratios, to keep it simple & deterministic)
   final Map<String, double> distributeTo;
 
   /// settlement fields
@@ -64,12 +66,13 @@ class GroupTx {
     this.paidBy,
     this.payers = const [],
     this.participants = const [],
+    Map<String, double> participantShares = const {},
     this.distributeTo = const {},
     this.fromUid,
     this.toUid,
     this.status = TxStatus.approved,
     this.endorsedBy = const [],
-  });
+  }) : participantShares = participantShares;
 
   Map<String, dynamic> toMap() {
     return {
@@ -78,14 +81,22 @@ class GroupTx {
       if (category != null) 'category': category,
       if (description != null) 'description': description,
 
-      // Keep old key if you want; optional.
+      // Legacy payer (optional)
       if (paidBy != null) 'paidBy': paidBy,
 
-      // NEW keys
+      // Multi payer
       if (payers.isNotEmpty) 'payers': payers.map((e) => e.toMap()).toList(),
+
+      // Participants
       if (participants.isNotEmpty) 'participants': participants,
+
+      // Unequal split (only store if not empty)
+      if (participantShares.isNotEmpty) 'participantShares': participantShares,
+
+      // Income distribution
       if (distributeTo.isNotEmpty) 'distributeTo': distributeTo,
 
+      // Settlement
       if (fromUid != null) 'fromUid': fromUid,
       if (toUid != null) 'toUid': toUid,
 
@@ -115,8 +126,9 @@ class GroupTx {
     List<PayerPortion> payers = [];
     if (payersRaw is List) {
       payers = payersRaw
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .map((e) => PayerPortion.fromMap(e))
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .map(PayerPortion.fromMap)
           .toList();
     }
 
@@ -125,6 +137,15 @@ class GroupTx {
       // Legacy: single payer paid full amount
       final amt = ((m['amount'] ?? 0) as num).toDouble();
       payers = [PayerPortion(uid: paidBy, amount: amt)];
+    }
+
+    // participantShares (unequal split)
+    final sharesRaw = m['participantShares'];
+    final participantShares = <String, double>{};
+    if (sharesRaw is Map) {
+      sharesRaw.forEach((k, v) {
+        participantShares[k.toString()] = ((v ?? 0) as num).toDouble();
+      });
     }
 
     // distributeTo (income distribution)
@@ -145,6 +166,7 @@ class GroupTx {
       paidBy: paidBy,
       payers: payers,
       participants: participants,
+      participantShares: participantShares,
       distributeTo: distributeTo,
       fromUid: m['fromUid'] as String?,
       toUid: m['toUid'] as String?,
@@ -156,5 +178,14 @@ class GroupTx {
       endorsedBy: (m['endorsedBy'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[],
       createdBy: (m['createdBy'] ?? '') as String,
     );
+  }
+
+  /// Helper: get share for a user (unequal if present, else equal)
+  double shareFor(String uid) {
+    if (participantShares.isNotEmpty) {
+      return participantShares[uid] ?? 0.0;
+    }
+    if (!participants.contains(uid) || participants.isEmpty) return 0.0;
+    return amount / participants.length;
   }
 }

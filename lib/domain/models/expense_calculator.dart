@@ -19,18 +19,20 @@ class ExpenseCalculator {
     double totalShare = 0;
 
     for (final tx in txs) {
-      // 1. Check if the member was the one who paid
-      if (tx.paidBy == memberId) {
+      // 1) ✅ PAID (multi payer preferred, else legacy)
+      if (tx.payers.isNotEmpty) {
+        for (final p in tx.payers) {
+          if (p.uid == memberId) {
+            totalPaid += p.amount;
+          }
+        }
+      } else if (tx.paidBy == memberId) {
         totalPaid += tx.amount;
       }
 
-      // 2. Check if the member participated in this expense
+      // 2) ✅ SHARE (unequal if participantShares exist, else equal)
       if (tx.participants.contains(memberId)) {
-        // Calculate the per-person share (Total / Number of Participants)
-        final participantCount = tx.participants.length;
-        if (participantCount > 0) {
-          totalShare += (tx.amount / participantCount);
-        }
+        totalShare += tx.shareFor(memberId);
       }
     }
 
@@ -74,9 +76,18 @@ class ExpenseCalculator {
         // ✅ participants (if empty, assume all members like dashboard usually does)
         final parts = tx.participants.isNotEmpty ? tx.participants : memberUids;
         if (parts.isNotEmpty) {
-          final each = tx.amount / parts.length;
-          for (final uid in parts) {
-            add(uid, -each);
+          // ✅ Unequal: use participantShares if provided (and only for those participants)
+          if (tx.participantShares.isNotEmpty) {
+            for (final uid in parts) {
+              final share = tx.participantShares[uid] ?? 0.0;
+              add(uid, -share);
+            }
+          } else {
+            // ✅ Equal split (existing behavior)
+            final each = tx.amount / parts.length;
+            for (final uid in parts) {
+              add(uid, -each);
+            }
           }
         }
       }
