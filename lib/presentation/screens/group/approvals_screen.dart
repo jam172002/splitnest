@@ -25,7 +25,9 @@ class ApprovalsScreen extends StatelessWidget {
       stream: repo.watchGroup(groupId),
       builder: (context, groupSnap) {
         final group = groupSnap.data;
-        if (group == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        if (group == null)
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
 
         return FutureBuilder<String>(
           future: repo.roleOf(groupId, myUid),
@@ -45,7 +47,8 @@ class ApprovalsScreen extends StatelessWidget {
                     builder: (context, snap) {
                       final pending = snap.data ?? [];
                       if (pending.isEmpty) {
-                        return const EmptyHint('All clear!\nNo transactions pending approval.');
+                        return const EmptyHint(
+                            'All clear!\nNo transactions pending approval.');
                       }
 
                       return ListView.builder(
@@ -72,25 +75,31 @@ class ApprovalsScreen extends StatelessWidget {
                                 children: [
                                   // --- Header Row ---
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(
                                           color: colorScheme.secondaryContainer,
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
                                         child: Text(
                                           t.category!.toUpperCase(),
-                                          style: theme.textTheme.labelSmall?.copyWith(
-                                            color: colorScheme.onSecondaryContainer,
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                            color: colorScheme
+                                                .onSecondaryContainer,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                       ),
                                       Text(
                                         Fmt.money(t.amount),
-                                        style: theme.textTheme.titleLarge?.copyWith(
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
                                           fontWeight: FontWeight.bold,
                                           color: colorScheme.primary,
                                         ),
@@ -101,13 +110,16 @@ class ApprovalsScreen extends StatelessWidget {
 
                                   // --- Details Section ---
                                   Text(
-                                    (t.description ?? '').isNotEmpty ? t.description! : 'No description provided',
+                                    (t.description ?? '').isNotEmpty
+                                        ? t.description!
+                                        : 'No description provided',
                                     style: theme.textTheme.bodyLarge,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     'Paid by ${payer?.name ?? "Unknown"} • ${Fmt.date(t.at)}',
-                                    style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+                                    style: theme.textTheme.bodySmall
+                                        ?.copyWith(color: colorScheme.outline),
                                   ),
                                   const Divider(height: 32),
 
@@ -122,8 +134,15 @@ class ApprovalsScreen extends StatelessWidget {
                                       ),
                                       if (isAdmin)
                                         TextButton(
-                                          onPressed: () => repo.rejectExpense(groupId: groupId, txId: t.id),
-                                          style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+                                          onPressed: () => repo.rejectExpense(
+                                            groupId: groupId,
+                                            txId: t.id,
+                                            uid: myUid,
+                                            isAdmin: isAdmin,
+                                          ),
+                                          style: TextButton.styleFrom(
+                                              foregroundColor:
+                                                  colorScheme.error),
                                           child: const Text('Reject'),
                                         ),
                                       const SizedBox(width: 8),
@@ -131,14 +150,19 @@ class ApprovalsScreen extends StatelessWidget {
                                         onPressed: (!canEndorse || endorsed)
                                             ? null
                                             : () => repo.endorseExpense(
-                                          groupId: groupId,
-                                          txId: t.id,
-                                          uid: myUid,
-                                          group: group,
-                                          isAdmin: isAdmin,
-                                        ),
+                                                  groupId: groupId,
+                                                  txId: t.id,
+                                                  uid: myUid,
+                                                  group: group,
+                                                  isAdmin: isAdmin,
+                                                ),
                                         child: Text(
-                                          endorsed ? 'Approved' : (group.approvalMode == 'admin_only' ? 'Approve' : 'Endorse'),
+                                          endorsed
+                                              ? 'Approved'
+                                              : (group.approvalMode ==
+                                                      'admin_only'
+                                                  ? 'Approve'
+                                                  : 'Endorse'),
                                         ),
                                       ),
                                     ],

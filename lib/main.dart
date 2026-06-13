@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:splitnest/presentation/screens/personal/personal_lock_controller.dart';
 import 'package:splitnest/theme/theme.dart';
@@ -17,11 +18,25 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  runApp(const SplitNestApp());
+  final notificationsRepo = NotificationsRepo();
+  final currentUid = FirebaseAuth.instance.currentUser?.uid;
+  if (currentUid != null) {
+    await notificationsRepo.initAndSaveToken(currentUid);
+  }
+
+  runApp(SplitNestApp(notificationsRepo: notificationsRepo));
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    notificationsRepo.configureMessageNavigation(appRouter.go);
+  });
 }
 
 class SplitNestApp extends StatelessWidget {
-  const SplitNestApp({super.key});
+  final NotificationsRepo notificationsRepo;
+
+  const SplitNestApp({
+    super.key,
+    required this.notificationsRepo,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +47,7 @@ class SplitNestApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PersonalLockController()),
         Provider(create: (_) => GroupRepo()),
         Provider(create: (_) => PersonalRepo()),
-        Provider(create: (_) => NotificationsRepo()),
+        Provider.value(value: notificationsRepo),
       ],
       child: Builder(
         builder: (context) {

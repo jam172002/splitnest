@@ -5,7 +5,6 @@ import '../../../data/auth_repo.dart';
 import '../../../theme/theme_mode_controller.dart';
 import '../../widgets/app_scaffold.dart';
 
-
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
@@ -31,10 +30,12 @@ class ProfileScreen extends StatelessWidget {
         // ✅ Dark/Light toggle button (hook to your theme controller)
         IconButton(
           tooltip: 'Toggle theme',
-          onPressed: () => context.read<ThemeModeController>().toggleDarkLight(),
+          onPressed: () =>
+              context.read<ThemeModeController>().toggleDarkLight(),
           icon: Icon(
             Icons.brightness_6_rounded,
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75),
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75),
           ),
         ),
         const SizedBox(width: 6),
@@ -60,7 +61,7 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 title: 'About SplitNest',
                 message:
-                'SplitNest helps you manage groups and shared expenses in a clean, simple way.',
+                    'SplitNest helps you manage groups and shared expenses in a clean, simple way.',
               ),
             ),
             const SizedBox(height: 10),
@@ -73,7 +74,7 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 title: 'Approval Logic',
                 message:
-                'Entries are approved based on your group’s endorsement/approval rules.',
+                    'Entries are approved based on your group’s endorsement/approval rules.',
               ),
             ),
             _Divider(cs: cs),
@@ -84,19 +85,14 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 title: 'Invite System',
                 message:
-                'You can join a group using its Group ID (invite code) shared by the group admin.',
+                    'You can join a group using its Group ID (invite code) shared by the group admin.',
               ),
             ),
             _Divider(cs: cs),
             _TextActionRow(
               title: 'Notifications',
               accent: kBrandGreen,
-              onTap: () => _showInfoDialog(
-                context,
-                title: 'Notifications',
-                message:
-                'Notifications inform you about important updates like invites, approvals, and settlements.',
-              ),
+              onTap: () => context.push('/notifications'),
             ),
 
             const SizedBox(height: 22),
@@ -109,7 +105,7 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 title: 'Account',
                 message:
-                'Manage your account preferences and security actions from here.',
+                    'Manage your account preferences and security actions from here.',
               ),
             ),
             const SizedBox(height: 10),
@@ -134,10 +130,10 @@ class ProfileScreen extends StatelessWidget {
   }
 
   static Future<void> _showInfoDialog(
-      BuildContext context, {
-        required String title,
-        required String message,
-      }) {
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return showDialog<void>(
       context: context,
@@ -308,9 +304,7 @@ class _TextActionRow extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    final textColor = isDestructive
-        ? cs.error
-        : cs.onSurface;
+    final textColor = isDestructive ? cs.error : cs.onSurface;
 
     return InkWell(
       onTap: onTap,

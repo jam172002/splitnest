@@ -2,9 +2,23 @@ import 'dart:io' show Platform;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import '../domain/models/group_notification.dart';
+
 class NotificationsRepo {
   final _db = FirebaseFirestore.instance;
   final _msg = FirebaseMessaging.instance;
+
+  void configureMessageNavigation(void Function(String path) navigate) {
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final path = message.data['path'] as String?;
+      if (path != null && path.isNotEmpty) navigate(path);
+    });
+
+    _msg.getInitialMessage().then((message) {
+      final path = message?.data['path'] as String?;
+      if (path != null && path.isNotEmpty) navigate(path);
+    });
+  }
 
   Future<void> initAndSaveToken(String uid) async {
     await _msg.requestPermission();
@@ -38,12 +52,56 @@ class NotificationsRepo {
     return 'web';
   }
 
+  Stream<List<GroupNotification>> watchNotifications(
+    String uid, {
+    String? groupId,
+  }) {
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .orderBy('createdAt', descending: true)
+        .limit(200)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => GroupNotification.fromMap(doc.id, doc.data()))
+            .where((item) => groupId == null || item.groupId == groupId)
+            .toList());
+  }
+
+  Future<void> markAsRead(String uid, String notificationId) async {
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .doc(notificationId)
+        .update({'isRead': true});
+  }
+
+  Future<void> markGroupAsRead(String uid, String groupId) async {
+    final snapshot = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .where('groupId', isEqualTo: groupId)
+        .get();
+    final unread =
+        snapshot.docs.where((doc) => doc.data()['isRead'] != true).toList();
+    if (unread.isEmpty) return;
+    final batch = _db.batch();
+    for (final doc in unread) {
+      batch.update(doc.reference, {'isRead': true});
+    }
+    await batch.commit();
+  }
+
   // ────────────────────────────────
   //  NEW: In-App "New Expense" Alert
   // ────────────────────────────────
 
   /// Called when user opens the group dashboard
-  Future<void> markExpenseAsSeen(String groupId, String latestTxId, String uid) async {
+  Future<void> markExpenseAsSeen(
+      String groupId, String latestTxId, String uid) async {
     await _db
         .collection('users')
         .doc(uid)
@@ -53,7 +111,8 @@ class NotificationsRepo {
   }
 
   /// Check if there are new expenses user hasn't seen yet
-  Future<bool> hasUnseenExpenses(String groupId, String latestTxId, String uid) async {
+  Future<bool> hasUnseenExpenses(
+      String groupId, String latestTxId, String uid) async {
     final doc = await _db
         .collection('users')
         .doc(uid)
@@ -71,7 +130,8 @@ class NotificationsRepo {
     final hasUnseen = lastSeen != latestTxId;
 
     // ← PUT THE DEBUG PRINT RIGHT HERE
-    print('Has unseen for $groupId: $hasUnseen (lastSeen: $lastSeen, latest: $latestTxId)');
+    print(
+        'Has unseen for $groupId: $hasUnseen (lastSeen: $lastSeen, latest: $latestTxId)');
 
     return hasUnseen;
   }

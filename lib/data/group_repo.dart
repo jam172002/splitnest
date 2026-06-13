@@ -446,7 +446,8 @@ class GroupRepo {
 
     final role = await roleOf(groupId, createdBy);
     if (createdBy != fromUid && role != 'admin') {
-      throw Exception('Only the payer or a group admin can record this payment');
+      throw Exception(
+          'Only the payer or a group admin can record this payment');
     }
 
     final members = await _db
@@ -662,8 +663,10 @@ class GroupRepo {
         });
       }
 
-      // ❌ SETTLEMENT COMPLETELY IGNORED
-      // We are not using settlement feature anymore.
+      if (tx.type == 'settlement') {
+        add(tx.fromUid ?? '', tx.amount);
+        add(tx.toUid ?? '', -tx.amount);
+      }
     }
 
     return balances;

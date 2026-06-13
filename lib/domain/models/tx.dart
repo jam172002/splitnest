@@ -1,7 +1,7 @@
 // domain/models/tx.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum TxStatus { pending, approved, rejected }
+enum TxStatus { pending, approved, rejected, disputed }
 
 class PayerPortion {
   final String uid;
@@ -10,14 +10,14 @@ class PayerPortion {
   const PayerPortion({required this.uid, required this.amount});
 
   Map<String, dynamic> toMap() => {
-    'uid': uid,
-    'amount': amount,
-  };
+        'uid': uid,
+        'amount': amount,
+      };
 
   factory PayerPortion.fromMap(Map<String, dynamic> m) => PayerPortion(
-    uid: (m['uid'] ?? '') as String,
-    amount: ((m['amount'] ?? 0) as num).toDouble(),
-  );
+        uid: (m['uid'] ?? '') as String,
+        amount: ((m['amount'] ?? 0) as num).toDouble(),
+      );
 }
 
 class GroupTx {
@@ -119,7 +119,8 @@ class GroupTx {
 
     // participants
     final participants =
-        (m['participants'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[];
+        (m['participants'] as List?)?.map((e) => e.toString()).toList() ??
+            const <String>[];
 
     // payers (new) OR fallback to paidBy (legacy)
     final payersRaw = m['payers'];
@@ -172,10 +173,12 @@ class GroupTx {
       toUid: m['toUid'] as String?,
       at: at,
       status: TxStatus.values.firstWhere(
-            (e) => e.name == (m['status'] ?? TxStatus.approved.name),
+        (e) => e.name == (m['status'] ?? TxStatus.approved.name),
         orElse: () => TxStatus.approved,
       ),
-      endorsedBy: (m['endorsedBy'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[],
+      endorsedBy:
+          (m['endorsedBy'] as List?)?.map((e) => e.toString()).toList() ??
+              const <String>[],
       createdBy: (m['createdBy'] ?? '') as String,
     );
   }

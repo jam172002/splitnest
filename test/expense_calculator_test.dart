@@ -66,4 +66,41 @@ void main() {
     expect(summary.netBalance, 0);
     expect(ExpenseCalculator.calculateDisputedShare([tx], 'me'), 50);
   });
+
+  test('partial settlement leaves only the unpaid balance', () {
+    final expense = GroupTx(
+      id: 'expense-1',
+      type: 'expense',
+      amount: 200,
+      at: DateTime(2026),
+      createdBy: 'user-2',
+      payers: const [PayerPortion(uid: 'user-2', amount: 200)],
+      participants: const ['user-1', 'user-2'],
+    );
+    final payment = GroupTx(
+      id: 'settlement-1',
+      type: 'settlement',
+      amount: 80,
+      at: DateTime(2026, 1, 2),
+      createdBy: 'user-1',
+      fromUid: 'user-1',
+      toUid: 'user-2',
+    );
+
+    final balances = ExpenseCalculator.calculateNetByMember(
+      txs: [expense, payment],
+      memberUids: ['user-1', 'user-2'],
+    );
+
+    expect(balances['user-1'], -20);
+    expect(balances['user-2'], 20);
+    expect(
+      ExpenseCalculator.outstandingBetween(
+        netByMember: balances,
+        fromUid: 'user-1',
+        toUid: 'user-2',
+      ),
+      20,
+    );
+  });
 }

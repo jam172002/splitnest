@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/format.dart';
+import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
 import '../../../domain/models/group_member.dart';
 import '../../../domain/models/tx.dart';
@@ -21,6 +22,7 @@ class GroupTxDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<GroupRepo>();
+    final myUid = context.read<AuthRepo>().currentUser!.uid;
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
@@ -64,7 +66,8 @@ class GroupTxDetailScreen extends StatelessWidget {
                 return const Center(child: Text('Transaction not found.'));
               }
 
-              final isExpense = tx.type == 'expense' || tx.type == 'bill_instance';
+              final isExpense =
+                  tx.type == 'expense' || tx.type == 'bill_instance';
               final isIncome = tx.type == 'income';
               final isSettlement = tx.type == 'settlement';
 
@@ -99,8 +102,10 @@ class GroupTxDetailScreen extends StatelessWidget {
               }
 
               Color iconBg() {
-                if (isSettlement) return cs.tertiaryContainer.withValues(alpha: 0.45);
-                if (isIncome) return cs.secondaryContainer.withValues(alpha: 0.45);
+                if (isSettlement)
+                  return cs.tertiaryContainer.withValues(alpha: 0.45);
+                if (isIncome)
+                  return cs.secondaryContainer.withValues(alpha: 0.45);
                 return cs.primaryContainer.withValues(alpha: 0.45);
               }
 
@@ -118,53 +123,54 @@ class GroupTxDetailScreen extends StatelessWidget {
               }
 
               Widget sectionTitle(String t) => Padding(
-                padding: const EdgeInsets.only(top: 16, bottom: 10),
-                child: Text(
-                  t,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-              );
+                    padding: const EdgeInsets.only(top: 16, bottom: 10),
+                    child: Text(
+                      t,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  );
 
               Widget infoRow(String label, String value) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 115,
-                      child: Text(
-                        label,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          fontWeight: FontWeight.w800,
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 115,
+                          child: Text(
+                            label,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        value,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        Expanded(
+                          child: Text(
+                            value,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              );
+                  );
 
               Widget card({required Widget child}) => Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
-                ),
-                child: child,
-              );
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 0.35)),
+                    ),
+                    child: child,
+                  );
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
@@ -178,7 +184,8 @@ class GroupTxDetailScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+                        border: Border.all(
+                            color: cs.outlineVariant.withValues(alpha: 0.35)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,6 +245,33 @@ class GroupTxDetailScreen extends StatelessWidget {
                       ),
                     ),
 
+                    if (tx.type == 'expense')
+                      FutureBuilder<String>(
+                        future: repo.roleOf(groupId, myUid),
+                        builder: (context, roleSnapshot) {
+                          if (roleSnapshot.data != 'admin') {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => context.pushNamed(
+                                  'edit_expense',
+                                  pathParameters: {
+                                    'groupId': groupId,
+                                    'txId': txId,
+                                  },
+                                ),
+                                icon: const Icon(Icons.edit_outlined),
+                                label: const Text('Edit Expense'),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
                     sectionTitle('Basics'),
                     card(
                       child: Column(
@@ -273,53 +307,59 @@ class GroupTxDetailScreen extends StatelessWidget {
                       card(
                         child: payers.isEmpty
                             ? Text(
-                          'No payer info found.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        )
+                                'No payer info found.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
                             : Column(
-                          children: [
-                            ...payers.map((p) {
-                              return ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  nameOf(p.uid),
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w900,
+                                children: [
+                                  ...payers.map((p) {
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                        nameOf(p.uid),
+                                        style:
+                                            theme.textTheme.bodyLarge?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      trailing: Text(
+                                        Fmt.money(p.amount),
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                  Divider(
+                                      color: cs.outlineVariant
+                                          .withValues(alpha: 0.25)),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Total paid',
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        Fmt.money(totalPaid),
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                trailing: Text(
-                                  Fmt.money(p.amount),
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              );
-                            }),
-                            Divider(color: cs.outlineVariant.withValues(alpha: 0.25)),
-                            Row(
-                              children: [
-                                Text(
-                                  'Total paid',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  Fmt.money(totalPaid),
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                                ],
+                              ),
                       ),
                     ],
 
@@ -329,55 +369,61 @@ class GroupTxDetailScreen extends StatelessWidget {
                       card(
                         child: participants.isEmpty
                             ? Text(
-                          'No participants saved.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        )
+                                'No participants saved.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
                             : Column(
-                          children: [
-                            ...participants.map((uid) {
-                              return ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  nameOf(uid),
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w900,
+                                children: [
+                                  ...participants.map((uid) {
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                        nameOf(uid),
+                                        style:
+                                            theme.textTheme.bodyLarge?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      trailing: Text(
+                                        Fmt.money(participantShare),
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                  Divider(
+                                      color: cs.outlineVariant
+                                          .withValues(alpha: 0.25)),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Split',
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        participants.isEmpty
+                                            ? '—'
+                                            : 'Equal (${participants.length} people)',
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                trailing: Text(
-                                  Fmt.money(participantShare),
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              );
-                            }),
-                            Divider(color: cs.outlineVariant.withValues(alpha: 0.25)),
-                            Row(
-                              children: [
-                                Text(
-                                  'Split',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  participants.isEmpty
-                                      ? '—'
-                                      : 'Equal (${participants.length} people)',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                                ],
+                              ),
                       ),
                     ],
 
@@ -387,53 +433,59 @@ class GroupTxDetailScreen extends StatelessWidget {
                       card(
                         child: dist.isEmpty
                             ? Text(
-                          'No distribution data saved.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        )
+                                'No distribution data saved.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
                             : Column(
-                          children: [
-                            ...dist.entries.map((e) {
-                              return ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  nameOf(e.key),
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w900,
+                                children: [
+                                  ...dist.entries.map((e) {
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                        nameOf(e.key),
+                                        style:
+                                            theme.textTheme.bodyLarge?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      trailing: Text(
+                                        Fmt.money(e.value),
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                  Divider(
+                                      color: cs.outlineVariant
+                                          .withValues(alpha: 0.25)),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Total distributed',
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        Fmt.money(distTotal),
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                trailing: Text(
-                                  Fmt.money(e.value),
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              );
-                            }),
-                            Divider(color: cs.outlineVariant.withValues(alpha: 0.25)),
-                            Row(
-                              children: [
-                                Text(
-                                  'Total distributed',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  Fmt.money(distTotal),
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                                ],
+                              ),
                       ),
                     ],
                   ],
