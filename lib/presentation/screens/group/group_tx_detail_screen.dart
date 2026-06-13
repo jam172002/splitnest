@@ -254,19 +254,38 @@ class GroupTxDetailScreen extends StatelessWidget {
                           }
                           return Padding(
                             padding: const EdgeInsets.only(top: 12),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: () => context.pushNamed(
-                                  'edit_expense',
-                                  pathParameters: {
-                                    'groupId': groupId,
-                                    'txId': txId,
-                                  },
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => context.pushNamed(
+                                      'edit_expense',
+                                      pathParameters: {
+                                        'groupId': groupId,
+                                        'txId': txId,
+                                      },
+                                    ),
+                                    icon: const Icon(Icons.edit_outlined),
+                                    label: const Text('Edit'),
+                                  ),
                                 ),
-                                icon: const Icon(Icons.edit_outlined),
-                                label: const Text('Edit Expense'),
-                              ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _confirmDeleteExpense(
+                                      context,
+                                      repo,
+                                      myUid,
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: cs.error,
+                                      side: BorderSide(color: cs.error),
+                                    ),
+                                    icon: const Icon(Icons.delete_outline),
+                                    label: const Text('Delete'),
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -496,5 +515,51 @@ class GroupTxDetailScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  Future<void> _confirmDeleteExpense(
+    BuildContext context,
+    GroupRepo repo,
+    String currentUid,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete expense?'),
+        content: const Text(
+          'This expense will be removed from the group and all members will be notified.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await repo.deleteExpense(
+        groupId: groupId,
+        txId: txId,
+        currentUid: currentUid,
+      );
+      if (context.mounted) context.pop();
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
   }
 }

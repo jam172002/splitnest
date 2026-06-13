@@ -169,3 +169,19 @@ exports.onTxUpdate = functions.firestore
       });
     }
   });
+
+exports.onTxDelete = functions.firestore
+  .document("groups/{groupId}/tx/{txId}")
+  .onDelete(async (snapshot, context) => {
+    const { groupId, txId } = context.params;
+    const tx = snapshot.data() || {};
+    if (tx.type !== "expense") return;
+
+    await notifyGroup(groupId, txId, `${txId}_deleted`, {
+      tx,
+      type: "expense_deleted",
+      title: "Expense deleted",
+      message: "A group admin deleted this expense. It has been removed from group totals.",
+      requiresAction: false,
+    });
+  });

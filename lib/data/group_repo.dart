@@ -429,6 +429,34 @@ class GroupRepo {
     });
   }
 
+  Future<void> deleteExpense({
+    required String groupId,
+    required String txId,
+    required String currentUid,
+  }) async {
+    final groupRef = _db.collection(FirestorePaths.groups).doc(groupId);
+    final memberRef = groupRef.collection('members').doc(currentUid);
+    final txRef = groupRef.collection('tx').doc(txId);
+
+    await _db.runTransaction((transaction) async {
+      final memberSnapshot = await transaction.get(memberRef);
+      if (memberSnapshot.data()?['role'] != 'admin') {
+        throw Exception('Only group admins can delete expenses');
+      }
+
+      final txSnapshot = await transaction.get(txRef);
+      if (!txSnapshot.exists || txSnapshot.data() == null) {
+        throw Exception('Expense not found');
+      }
+      final expense = GroupTx.fromMap(txSnapshot.id, txSnapshot.data()!);
+      if (expense.type != 'expense') {
+        throw Exception('Only expenses can be deleted');
+      }
+
+      transaction.delete(txRef);
+    });
+  }
+
   Future<void> addSettlement({
     required String groupId,
     required double amount,
