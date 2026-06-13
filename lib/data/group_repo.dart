@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../domain/models/bill.dart';
 import '../core/firestore_paths.dart';
 import '../domain/models/group.dart';
 import '../domain/models/group_member.dart';
 import '../domain/models/member_balance.dart';
 import '../domain/models/tx.dart';
+import '../domain/models/expense_calculator.dart';
 
 class GroupRepo {
   final _db = FirebaseFirestore.instance;
@@ -27,6 +29,12 @@ class GroupRepo {
         .doc(groupId)
         .snapshots()
         .map((d) => Group.fromMap(d.id, d.data() ?? {}));
+  }
+
+  Future<Group> getGroup(String groupId) async {
+    final doc = await _db.collection(FirestorePaths.groups).doc(groupId).get();
+    if (!doc.exists || doc.data() == null) throw Exception('Group not found');
+    return Group.fromMap(doc.id, doc.data()!);
   }
 
   Future<String> createGroup({
@@ -52,7 +60,8 @@ class GroupRepo {
 
     // Fetch creator's name from users collection
     final userDoc = await _db.collection('users').doc(uid).get();
-    final creatorName = userDoc.data()?['name'] as String? ?? email.split('@')[0];
+    final creatorName =
+        userDoc.data()?['name'] as String? ?? email.split('@')[0];
 
     await _db.runTransaction((tx) async {
       tx.set(ref, {
@@ -65,7 +74,7 @@ class GroupRepo {
         ref.collection('members').doc(uid),
         GroupMember(
           id: uid,
-          name: creatorName,  // ← Now uses real name
+          name: creatorName, // ← Now uses real name
           role: 'admin',
           joinedAt: DateTime.now(),
         ).toMap(),
@@ -73,7 +82,16 @@ class GroupRepo {
     });
 
     // Seed default categories
-    final defaultCats = ['breakfast', 'lunch', 'dinner', 'tea', 'milk', 'snacks', 'transport', 'other'];
+    final defaultCats = [
+      'breakfast',
+      'lunch',
+      'dinner',
+      'tea',
+      'milk',
+      'snacks',
+      'transport',
+      'other'
+    ];
     final batch = _db.batch();
     for (final cat in defaultCats) {
       final catRef = ref.collection('categories').doc();
@@ -108,7 +126,7 @@ class GroupRepo {
         groupRef.collection('members').doc(uid),
         GroupMember(
           id: uid,
-          name: userName,  // ← Now uses real name
+          name: userName, // ← Now uses real name
           role: 'member',
           joinedAt: DateTime.now(),
         ).toMap(),
@@ -130,10 +148,12 @@ class GroupRepo {
         .doc(groupId)
         .collection('members')
         .snapshots()
-        .map((s) => s.docs.map((d) => GroupMember.fromMap(
-      id: d.id,
-      map: d.data(),
-    )).toList());
+        .map((s) => s.docs
+            .map((d) => GroupMember.fromMap(
+                  id: d.id,
+                  map: d.data(),
+                ))
+            .toList());
   }
 
   Future<String> roleOf(String groupId, String uid) async {
@@ -196,7 +216,10 @@ class GroupRepo {
         .doc(groupId)
         .collection('categories')
         .snapshots()
-        .map((s) => s.docs.map((d) => d.data()['name'] as String? ?? '').where((e) => e.isNotEmpty).toList());
+        .map((s) => s.docs
+            .map((d) => d.data()['name'] as String? ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList());
   }
 
   Stream<List<Map<String, dynamic>>> watchCategoryDocs(String groupId) {
@@ -206,11 +229,11 @@ class GroupRepo {
         .collection('categories')
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) {
-      return {
-        'id': doc.id,
-        ...doc.data(),
-      };
-    }).toList());
+              return {
+                'id': doc.id,
+                ...doc.data(),
+              };
+            }).toList());
   }
 
   Future<void> addCategory(String groupId, String name) async {
@@ -247,7 +270,19 @@ class GroupRepo {
         .collection('tx')
         .orderBy('at', descending: true)
         .snapshots()
-        .map((s) => s.docs.map((d) => GroupTx.fromMap(d.id, d.data())).toList());
+        .map(
+            (s) => s.docs.map((d) => GroupTx.fromMap(d.id, d.data())).toList());
+  }
+
+  Future<GroupTx?> getTx(String groupId, String txId) async {
+    final doc = await _db
+        .collection(FirestorePaths.groups)
+        .doc(groupId)
+        .collection('tx')
+        .doc(txId)
+        .get();
+    if (!doc.exists || doc.data() == null) return null;
+    return GroupTx.fromMap(doc.id, doc.data()!);
   }
 
   Stream<List<GroupTx>> watchPending(String groupId) {
@@ -258,7 +293,8 @@ class GroupRepo {
         .where('status', isEqualTo: TxStatus.pending.name)
         .orderBy('at', descending: true)
         .snapshots()
-        .map((s) => s.docs.map((d) => GroupTx.fromMap(d.id, d.data())).toList());
+        .map(
+            (s) => s.docs.map((d) => GroupTx.fromMap(d.id, d.data())).toList());
   }
 
   Future<void> addExpense({
@@ -266,22 +302,20 @@ class GroupRepo {
     required Group group,
     required double amount,
     required String category,
-
     required String paidBy,
     List<PayerPortion>? payers,
-
     required List<String> participants,
 
     // ✅ NEW (optional): if null/empty => equal split
     Map<String, double>? participantShares,
-
     String? description,
     required DateTime at,
     required String createdBy,
     required bool isAdmin,
   }) async {
     if (amount <= 0) throw Exception('Amount must be greater than 0');
-    if (participants.isEmpty) throw Exception('At least one participant is required');
+    if (participants.isEmpty)
+      throw Exception('At least one participant is required');
 
     final status = (isAdmin && group.adminBypass)
         ? TxStatus.approved
@@ -300,10 +334,10 @@ class GroupRepo {
     // ✅ NEW: normalize/compute shares (partial allowed)
     final shares = (participantShares != null && participantShares.isNotEmpty)
         ? _buildParticipantShares(
-      totalAmount: amount,
-      participants: participants,
-      partial: participantShares,
-    )
+            totalAmount: amount,
+            participants: participants,
+            partial: participantShares,
+          )
         : const <String, double>{};
 
     final tx = GroupTx(
@@ -315,7 +349,8 @@ class GroupRepo {
       payers: finalPayers,
       participants: participants,
       participantShares: shares, // ✅ NEW
-      description: description?.trim().isNotEmpty == true ? description!.trim() : null,
+      description:
+          description?.trim().isNotEmpty == true ? description!.trim() : null,
       at: at,
       status: status,
       endorsedBy: status == TxStatus.approved ? [createdBy] : [],
@@ -323,6 +358,75 @@ class GroupRepo {
     );
 
     await ref.set(tx.toMap());
+  }
+
+  Future<void> updateExpense({
+    required String groupId,
+    required String txId,
+    required String currentUid,
+    required double amount,
+    required String category,
+    required String paidBy,
+    required List<PayerPortion> payers,
+    required List<String> participants,
+    Map<String, double>? participantShares,
+    String? description,
+  }) async {
+    if (amount <= 0) throw Exception('Amount must be greater than 0');
+    if (participants.isEmpty) {
+      throw Exception('At least one participant is required');
+    }
+    if (payers.isEmpty) {
+      throw Exception('At least one payer is required');
+    }
+    final payerTotal =
+        payers.fold<double>(0, (total, payer) => total + payer.amount);
+    if ((payerTotal - amount).abs() > 0.01) {
+      throw Exception('Payers total must equal the expense amount');
+    }
+
+    final groupRef = _db.collection(FirestorePaths.groups).doc(groupId);
+    final memberRef = groupRef.collection('members').doc(currentUid);
+    final txRef = groupRef.collection('tx').doc(txId);
+
+    final shares = (participantShares != null && participantShares.isNotEmpty)
+        ? _buildParticipantShares(
+            totalAmount: amount,
+            participants: participants,
+            partial: participantShares,
+          )
+        : const <String, double>{};
+
+    await _db.runTransaction((transaction) async {
+      final memberSnap = await transaction.get(memberRef);
+      if (memberSnap.data()?['role'] != 'admin') {
+        throw Exception('Only group admins can edit expenses');
+      }
+
+      final txSnap = await transaction.get(txRef);
+      if (!txSnap.exists || txSnap.data() == null) {
+        throw Exception('Expense not found');
+      }
+
+      final current = GroupTx.fromMap(txSnap.id, txSnap.data()!);
+      if (current.type != 'expense') {
+        throw Exception('Only expenses can be edited');
+      }
+
+      transaction.update(txRef, {
+        'amount': amount,
+        'category': category,
+        'paidBy': paidBy,
+        'payers': payers.map((payer) => payer.toMap()).toList(),
+        'participants': participants,
+        'participantShares': shares,
+        'description': description?.trim().isNotEmpty == true
+            ? description!.trim()
+            : FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': currentUid,
+      });
+    });
   }
 
   Future<void> addSettlement({
@@ -333,8 +437,53 @@ class GroupRepo {
     String? description,
     required String createdBy,
   }) async {
-    if (amount <= 0) throw Exception('Settlement amount must be greater than 0');
-    if (fromUid == toUid) throw Exception('Cannot settle to the same person');
+    if (amount <= 0) {
+      throw Exception('Settlement amount must be greater than 0');
+    }
+    if (fromUid == toUid) {
+      throw Exception('Cannot settle to the same person');
+    }
+
+    final role = await roleOf(groupId, createdBy);
+    if (createdBy != fromUid && role != 'admin') {
+      throw Exception('Only the payer or a group admin can record this payment');
+    }
+
+    final members = await _db
+        .collection(FirestorePaths.groups)
+        .doc(groupId)
+        .collection('members')
+        .get();
+    final memberUids = members.docs.map((doc) => doc.id).toList();
+    if (!memberUids.contains(fromUid) || !memberUids.contains(toUid)) {
+      throw Exception('Both users must belong to the selected group');
+    }
+
+    final transactions = await _db
+        .collection(FirestorePaths.groups)
+        .doc(groupId)
+        .collection('tx')
+        .get();
+    final txs = transactions.docs
+        .map((doc) => GroupTx.fromMap(doc.id, doc.data()))
+        .toList();
+    final netByMember = ExpenseCalculator.calculateNetByMember(
+      txs: txs,
+      memberUids: memberUids,
+    );
+    final outstanding = ExpenseCalculator.outstandingBetween(
+      netByMember: netByMember,
+      fromUid: fromUid,
+      toUid: toUid,
+    );
+    if (outstanding <= 0.005) {
+      throw Exception('There is no outstanding payment in this direction');
+    }
+    if (amount - outstanding > 0.01) {
+      throw Exception(
+        'Payment cannot exceed ${outstanding.toStringAsFixed(2)}',
+      );
+    }
 
     final ref = _db
         .collection(FirestorePaths.groups)
@@ -348,7 +497,8 @@ class GroupRepo {
       amount: amount,
       fromUid: fromUid,
       toUid: toUid,
-      description: description?.trim().isNotEmpty == true ? description!.trim() : null,
+      description:
+          description?.trim().isNotEmpty == true ? description!.trim() : null,
       at: DateTime.now(),
       status: TxStatus.approved,
       endorsedBy: [createdBy],
@@ -402,7 +552,8 @@ class GroupRepo {
 
       t.update(txRef, {
         'endorsedBy': endorsed,
-        'status': shouldApprove ? TxStatus.approved.name : TxStatus.pending.name,
+        'status':
+            shouldApprove ? TxStatus.approved.name : TxStatus.pending.name,
       });
     });
   }
@@ -410,13 +561,31 @@ class GroupRepo {
   Future<void> rejectExpense({
     required String groupId,
     required String txId,
+    required String uid,
+    required bool isAdmin,
   }) async {
-    await _db
-        .collection(FirestorePaths.groups)
-        .doc(groupId)
-        .collection('tx')
-        .doc(txId)
-        .update({'status': TxStatus.rejected.name});
+    final groupRef = _db.collection(FirestorePaths.groups).doc(groupId);
+    final txRef = groupRef.collection('tx').doc(txId);
+
+    await _db.runTransaction((transaction) async {
+      final txSnapshot = await transaction.get(txRef);
+      if (!txSnapshot.exists || txSnapshot.data() == null) {
+        throw Exception('Expense not found');
+      }
+      final expense = GroupTx.fromMap(txSnapshot.id, txSnapshot.data()!);
+      if (expense.type != 'expense' || expense.status != TxStatus.pending) {
+        throw Exception('This expense can no longer be disputed');
+      }
+      if (!isAdmin && !expense.participants.contains(uid)) {
+        throw Exception('Only participants or admins can reject this expense');
+      }
+
+      transaction.update(txRef, {
+        'status': TxStatus.disputed.name,
+        'rejectedBy': uid,
+        'rejectedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 
   // ────────────────────────────────────────────────
@@ -555,7 +724,8 @@ class GroupRepo {
   // Member Transaction Details (for detail screen)
   // ────────────────────────────────────────────────
 
-  Future<List<GroupTx>> getExpensesPaidByMember(String groupId, String memberId) async {
+  Future<List<GroupTx>> getExpensesPaidByMember(
+      String groupId, String memberId) async {
     final snapshot = await _db
         .collection(FirestorePaths.groups)
         .doc(groupId)
@@ -564,7 +734,8 @@ class GroupRepo {
         .orderBy('at', descending: true)
         .get();
 
-    final all = snapshot.docs.map((d) => GroupTx.fromMap(d.id, d.data())).toList();
+    final all =
+        snapshot.docs.map((d) => GroupTx.fromMap(d.id, d.data())).toList();
 
     //  include: legacy paidBy OR new payers list
     return all.where((tx) {
@@ -600,7 +771,8 @@ class GroupRepo {
     await batch.commit();
   }
 
-  Future<List<GroupTx>> getExpensesParticipatedByMember(String groupId, String memberId) async {
+  Future<List<GroupTx>> getExpensesParticipatedByMember(
+      String groupId, String memberId) async {
     final snapshot = await _db
         .collection(FirestorePaths.groups)
         .doc(groupId)
@@ -610,7 +782,9 @@ class GroupRepo {
         .orderBy('at', descending: true)
         .get();
 
-    return snapshot.docs.map((doc) => GroupTx.fromMap(doc.id, doc.data())).toList();
+    return snapshot.docs
+        .map((doc) => GroupTx.fromMap(doc.id, doc.data()))
+        .toList();
   }
 
   // ────────────────────────────────────────────────
@@ -662,7 +836,8 @@ class GroupRepo {
     required String groupId,
     required Group group,
     required double amount,
-    required Map<String, double> distributeTo, // uid -> amount (must sum to total)
+    required Map<String, double>
+        distributeTo, // uid -> amount (must sum to total)
     String? description,
     required DateTime at,
     required String createdBy,
@@ -672,7 +847,8 @@ class GroupRepo {
       throw Exception('Income is only available in business groups.');
     }
     if (amount <= 0) throw Exception('Amount must be greater than 0');
-    if (distributeTo.isEmpty) throw Exception('Select at least one member for distribution');
+    if (distributeTo.isEmpty)
+      throw Exception('Select at least one member for distribution');
 
     final totalDist = distributeTo.values.fold<double>(0, (a, b) => a + b);
     // allow tiny rounding error
@@ -695,7 +871,8 @@ class GroupRepo {
       type: 'income',
       amount: amount,
       distributeTo: distributeTo,
-      description: description?.trim().isNotEmpty == true ? description!.trim() : null,
+      description:
+          description?.trim().isNotEmpty == true ? description!.trim() : null,
       at: at,
       status: status,
       endorsedBy: status == TxStatus.approved ? [createdBy] : [],
@@ -705,18 +882,14 @@ class GroupRepo {
     await ref.set(tx.toMap());
   }
 
-
-
 // inside GroupRepo class:
 
   CollectionReference<Map<String, dynamic>> _billsCol(String groupId) =>
       _db.collection(FirestorePaths.groups).doc(groupId).collection('bills');
 
   Stream<List<BillTemplate>> watchBills(String groupId) {
-    return _billsCol(groupId)
-        .orderBy('dueDay')
-        .snapshots()
-        .map((s) => s.docs.map((d) => BillTemplate.fromMap(d.id, d.data())).toList());
+    return _billsCol(groupId).orderBy('dueDay').snapshots().map((s) =>
+        s.docs.map((d) => BillTemplate.fromMap(d.id, d.data())).toList());
   }
 
   Future<String> addBill({
@@ -729,11 +902,14 @@ class GroupRepo {
     String? category,
     required String createdBy,
   }) async {
-    if (group.type != 'business') throw Exception('Bills are only available in business groups.');
+    if (group.type != 'business')
+      throw Exception('Bills are only available in business groups.');
     if (title.trim().isEmpty) throw Exception('Enter bill title');
     if (amount <= 0) throw Exception('Amount must be greater than 0');
-    if (participants.isEmpty) throw Exception('Select at least one participant');
-    if (dueDay < 1 || dueDay > 28) throw Exception('Due day must be between 1 and 28');
+    if (participants.isEmpty)
+      throw Exception('Select at least one participant');
+    if (dueDay < 1 || dueDay > 28)
+      throw Exception('Due day must be between 1 and 28');
 
     final ref = _billsCol(groupId).doc();
     final bill = BillTemplate(
@@ -766,7 +942,8 @@ class GroupRepo {
     if (amount != null) data['amount'] = amount;
     if (participants != null) data['participants'] = participants;
     if (dueDay != null) data['dueDay'] = dueDay;
-    if (category != null) data['category'] = category.trim().isEmpty ? null : category.trim();
+    if (category != null)
+      data['category'] = category.trim().isEmpty ? null : category.trim();
 
     await _billsCol(groupId).doc(billId).update(data);
   }
@@ -787,10 +964,13 @@ class GroupRepo {
     required String createdBy,
     required bool isAdmin,
   }) async {
-    if (group.type != 'business') throw Exception('Bills are only available in business groups.');
+    if (group.type != 'business')
+      throw Exception('Bills are only available in business groups.');
 
     final billsSnap = await _billsCol(groupId).get();
-    final bills = billsSnap.docs.map((d) => BillTemplate.fromMap(d.id, d.data())).toList();
+    final bills = billsSnap.docs
+        .map((d) => BillTemplate.fromMap(d.id, d.data()))
+        .toList();
 
     if (bills.isEmpty) return;
 
@@ -889,7 +1069,8 @@ class GroupRepo {
     required List<String> participants,
     required Map<String, double> partial, // uid -> amount (some may be missing)
   }) {
-    final cleanParticipants = participants.where((e) => e.trim().isNotEmpty).toList();
+    final cleanParticipants =
+        participants.where((e) => e.trim().isNotEmpty).toList();
     if (cleanParticipants.isEmpty) return {};
 
     final out = <String, double>{};
@@ -910,7 +1091,8 @@ class GroupRepo {
       specifiedUids.add(uid);
     }
 
-    final remainingUids = cleanParticipants.where((u) => !specifiedUids.contains(u)).toList();
+    final remainingUids =
+        cleanParticipants.where((u) => !specifiedUids.contains(u)).toList();
     final remaining = totalAmount - specifiedSum;
 
     if (remaining < -0.01) {
@@ -935,7 +1117,8 @@ class GroupRepo {
     final sum = out.values.fold<double>(0.0, (a, b) => a + b);
     final diff = totalAmount - sum;
     if (diff.abs() > 0.01) {
-      final first = remainingUids.isNotEmpty ? remainingUids.first : out.keys.first;
+      final first =
+          remainingUids.isNotEmpty ? remainingUids.first : out.keys.first;
       out[first] = (out[first] ?? 0.0) + diff;
     }
 

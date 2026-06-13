@@ -12,13 +12,29 @@ class ExpenseSummary {
   });
 }
 
+class BalanceTransfer {
+  final String fromUid;
+  final String toUid;
+  final double amount;
+
+  const BalanceTransfer({
+    required this.fromUid,
+    required this.toUid,
+    required this.amount,
+  });
+}
+
 class ExpenseCalculator {
+  static const double _balanceEpsilon = 0.005;
+
   /// Processes a list of group transactions to find a specific member's standing.
-  static ExpenseSummary calculateMemberSummary(List<GroupTx> txs, String memberId) {
+  static ExpenseSummary calculateMemberSummary(
+      List<GroupTx> txs, String memberId) {
     double totalPaid = 0;
     double totalShare = 0;
 
     for (final tx in txs) {
+      if (tx.status != TxStatus.approved) continue;
       // 1) ✅ PAID (multi payer preferred, else legacy)
       if (tx.payers.isNotEmpty) {
         for (final p in tx.payers) {
@@ -41,6 +57,20 @@ class ExpenseCalculator {
       totalShare: totalShare,
       netBalance: totalPaid - totalShare,
     );
+  }
+
+  static double calculateDisputedShare(
+    List<GroupTx> txs,
+    String memberId,
+  ) {
+    double total = 0;
+    for (final tx in txs) {
+      final isDisputed =
+          tx.status == TxStatus.disputed || tx.status == TxStatus.rejected;
+      if (!isDisputed || !tx.participants.contains(memberId)) continue;
+      total += tx.shareFor(memberId);
+    }
+    return total;
   }
 
   /// ✅ Single source of truth for balances
@@ -115,5 +145,61 @@ class ExpenseCalculator {
     }
 
     return net;
+  }
+
+  /// Matches debtors to creditors to produce a compact settlement plan.
+  static List<BalanceTransfer> calculateSettlements(
+    Map<String, double> netByMember,
+  ) {
+    final debtors = netByMember.entries
+        .where((entry) => entry.value < -_balanceEpsilon)
+        .map((entry) => MapEntry(entry.key, -entry.value))
+        .toList();
+    final creditors = netByMember.entries
+        .where((entry) => entry.value > _balanceEpsilon)
+        .map((entry) => MapEntry(entry.key, entry.value))
+        .toList();
+
+    final transfers = <BalanceTransfer>[];
+    var debtorIndex = 0;
+    var creditorIndex = 0;
+
+    while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+      final debtor = debtors[debtorIndex];
+      final creditor = creditors[creditorIndex];
+      final amount =
+          debtor.value < creditor.value ? debtor.value : creditor.value;
+
+      if (amount > _balanceEpsilon) {
+        transfers.add(BalanceTransfer(
+          fromUid: debtor.key,
+          toUid: creditor.key,
+          amount: amount,
+        ));
+      }
+
+      final remainingDebt = debtor.value - amount;
+      final remainingCredit = creditor.value - amount;
+      debtors[debtorIndex] = MapEntry(debtor.key, remainingDebt);
+      creditors[creditorIndex] = MapEntry(creditor.key, remainingCredit);
+
+      if (remainingDebt <= _balanceEpsilon) debtorIndex++;
+      if (remainingCredit <= _balanceEpsilon) creditorIndex++;
+    }
+
+    return transfers;
+  }
+
+  static double outstandingBetween({
+    required Map<String, double> netByMember,
+    required String fromUid,
+    required String toUid,
+  }) {
+    for (final transfer in calculateSettlements(netByMember)) {
+      if (transfer.fromUid == fromUid && transfer.toUid == toUid) {
+        return transfer.amount;
+      }
+    }
+    return 0;
   }
 }

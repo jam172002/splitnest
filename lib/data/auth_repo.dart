@@ -23,6 +23,10 @@ class AuthRepo extends ChangeNotifier {
     await _auth.signInWithEmailAndPassword(email: email, password: pass);
   }
 
+  Future<void> sendPasswordResetEmail(String email) async {
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
   Future<void> logout() async {
     await _auth.signOut();
   }

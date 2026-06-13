@@ -19,13 +19,12 @@ class GroupDashboardScreen extends StatelessWidget {
   final String groupId;
   const GroupDashboardScreen({super.key, required this.groupId});
 
-
-
   @override
   Widget build(BuildContext context) {
     final authRepo = context.watch<AuthRepo>();
     final myUid = authRepo.currentUser?.uid;
-    if (myUid == null) return const Scaffold(body: Center(child: Text('Please log in')));
+    if (myUid == null)
+      return const Scaffold(body: Center(child: Text('Please log in')));
 
     final groupRepo = context.read<GroupRepo>();
     final notificationsRepo = context.read<NotificationsRepo>();
@@ -34,7 +33,8 @@ class GroupDashboardScreen extends StatelessWidget {
       stream: groupRepo.watchGroup(groupId),
       builder: (context, groupSnap) {
         if (!groupSnap.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         final group = groupSnap.data!;
 
@@ -49,9 +49,10 @@ class GroupDashboardScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             onTap: () => context.push('/group/$groupId/info'),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     group.name,
@@ -63,8 +64,14 @@ class GroupDashboardScreen extends StatelessWidget {
                       color: cs.onSurface,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  //Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.55)),
+                  Text(
+                    'Click to see details',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      decoration: TextDecoration.underline,
+                      decorationColor: cs.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -84,7 +91,48 @@ class GroupDashboardScreen extends StatelessWidget {
           ),
 
           // ✅ No Members/Stats/Settings here anymore
-          actions: const [],
+          actions: [
+            StreamBuilder(
+              stream: notificationsRepo.watchNotifications(
+                myUid,
+                groupId: groupId,
+              ),
+              builder: (context, snapshot) {
+                final items = snapshot.data ?? const [];
+                final unread = items.where((item) => !item.isRead).length;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      tooltip: 'Group notifications',
+                      onPressed: () =>
+                          context.push('/group/$groupId/notifications'),
+                      icon: const Icon(Icons.notifications_outlined),
+                    ),
+                    if (unread > 0)
+                      Positioned(
+                        right: 5,
+                        top: 5,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: cs.error,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            unread > 9 ? '9+' : '$unread',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: cs.onError,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
 
           floatingActionButton: _buildFab(context, group),
 
@@ -98,10 +146,12 @@ class GroupDashboardScreen extends StatelessWidget {
                 stream: groupRepo.watchTx(groupId),
                 builder: (context, txSnap) {
                   final txs = txSnap.data ?? [];
-                  if (txs.isEmpty && members.isEmpty) return const EmptyHint('Getting things ready...');
+                  if (txs.isEmpty && members.isEmpty)
+                    return const EmptyHint('Getting things ready...');
 
                   if (txs.isNotEmpty) {
-                    notificationsRepo.markExpenseAsSeen(groupId, txs.first.id, myUid);
+                    notificationsRepo.markExpenseAsSeen(
+                        groupId, txs.first.id, myUid);
                   }
 
                   return _DashboardBody(
@@ -191,7 +241,18 @@ class _DashboardBody extends StatelessWidget {
     final cs = theme.colorScheme;
     final notificationsRepo = context.read<NotificationsRepo>();
 
-    final summary = ExpenseCalculator.calculateMemberSummary(transactions, myUid);
+    final summary =
+        ExpenseCalculator.calculateMemberSummary(transactions, myUid);
+    final disputedShare =
+        ExpenseCalculator.calculateDisputedShare(transactions, myUid);
+    final netByMember = ExpenseCalculator.calculateNetByMember(
+      txs: transactions,
+      memberUids: members.map((member) => member.id).toList(),
+    );
+    final settlements = ExpenseCalculator.calculateSettlements(netByMember)
+        .where(
+            (transfer) => transfer.fromUid == myUid || transfer.toUid == myUid)
+        .toList();
 
     final now = DateTime.now();
     double totalToday = 0;
@@ -199,6 +260,7 @@ class _DashboardBody extends StatelessWidget {
     final weekStart = now.subtract(Duration(days: now.weekday - 1));
 
     for (var tx in transactions) {
+      if (tx.status != TxStatus.approved) continue;
       if (DateUtils.isSameDay(tx.at, now)) totalToday += tx.amount;
       if (tx.at.isAfter(weekStart)) totalWeek += tx.amount;
     }
@@ -206,7 +268,8 @@ class _DashboardBody extends StatelessWidget {
     return FutureBuilder<bool>(
       future: transactions.isEmpty
           ? Future.value(false)
-          : notificationsRepo.hasUnseenExpenses(groupId, transactions.first.id, myUid),
+          : notificationsRepo.hasUnseenExpenses(
+              groupId, transactions.first.id, myUid),
       builder: (context, snapshot) {
         final hasUnseen = snapshot.data ?? false;
 
@@ -218,15 +281,18 @@ class _DashboardBody extends StatelessWidget {
               if (hasUnseen)
                 Container(
                   margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: kBrandGreen.withValues(alpha: 0.35)),
+                    border:
+                        Border.all(color: kBrandGreen.withValues(alpha: 0.35)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.notifications_active_rounded, color: kBrandGreen, size: 18),
+                      const Icon(Icons.notifications_active_rounded,
+                          color: kBrandGreen, size: 18),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -238,10 +304,13 @@ class _DashboardBody extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.close_rounded, color: cs.onSurface.withValues(alpha: 0.7), size: 18),
+                        icon: Icon(Icons.close_rounded,
+                            color: cs.onSurface.withValues(alpha: 0.7),
+                            size: 18),
                         onPressed: () {
                           if (transactions.isNotEmpty) {
-                            notificationsRepo.markExpenseAsSeen(groupId, transactions.first.id, myUid);
+                            notificationsRepo.markExpenseAsSeen(
+                                groupId, transactions.first.id, myUid);
                           }
                         },
                       ),
@@ -251,22 +320,29 @@ class _DashboardBody extends StatelessWidget {
 
               // Net Balance Card (refined)
               _BankBalanceCard(
-                net: summary.netBalance,
+                net: netByMember[myUid] ?? summary.netBalance,
                 paid: summary.totalPaid,
                 share: summary.totalShare,
+                disputed: disputedShare,
+                settlements: settlements,
+                memberMap: memberMap,
+                myUid: myUid,
               ),
 
               const SizedBox(height: 14),
 
               Row(
                 children: [
-                  Expanded(child: _MetricTile(label: 'Today', value: Fmt.money(totalToday))),
+                  Expanded(
+                      child: _MetricTile(
+                          label: 'Today', value: Fmt.money(totalToday))),
                   const SizedBox(width: 10),
-                  Expanded(child: _MetricTile(label: 'This week', value: Fmt.money(totalWeek))),
+                  Expanded(
+                      child: _MetricTile(
+                          label: 'This week', value: Fmt.money(totalWeek))),
                 ],
               ),
               const SizedBox(height: 10),
-
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -282,7 +358,8 @@ class _DashboardBody extends StatelessWidget {
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => GroupTransactionHistoryScreen(groupId: groupId),
+                        builder: (context) =>
+                            GroupTransactionHistoryScreen(groupId: groupId),
                       ),
                     ),
                     child: Text(
@@ -313,7 +390,8 @@ class _DashboardBody extends StatelessWidget {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: transactions.take(10).length,
-                  itemBuilder: (context, i) => _activityTile(context, transactions[i]),
+                  itemBuilder: (context, i) =>
+                      _activityTile(context, transactions[i]),
                 ),
             ],
           ),
@@ -321,8 +399,6 @@ class _DashboardBody extends StatelessWidget {
       },
     );
   }
-
-
 
   Widget _activityTile(BuildContext context, GroupTx tx) {
     final theme = Theme.of(context);
@@ -352,7 +428,6 @@ class _DashboardBody extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // ================= TITLE + TOTAL =================
             Row(
               children: [
@@ -390,10 +465,8 @@ class _DashboardBody extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-
               ...tx.payers.map((payer) {
-                final payerName =
-                    memberMap[payer.uid]?.name ?? 'Unknown';
+                final payerName = memberMap[payer.uid]?.name ?? 'Unknown';
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -454,19 +527,25 @@ class _DashboardBody extends StatelessWidget {
       ),
     );
   }
-
-
 }
 
 class _BankBalanceCard extends StatelessWidget {
   final double net;
   final double paid;
   final double share;
+  final double disputed;
+  final List<BalanceTransfer> settlements;
+  final Map<String, GroupMember> memberMap;
+  final String myUid;
 
   const _BankBalanceCard({
     required this.net,
     required this.paid,
     required this.share,
+    required this.disputed,
+    required this.settlements,
+    required this.memberMap,
+    required this.myUid,
   });
 
   @override
@@ -476,12 +555,19 @@ class _BankBalanceCard extends StatelessWidget {
 
     // Only black/white/green (+ opacity)
     final bg = isDark ? AppColors.black : AppColors.white;
-    final stroke = isDark ? Colors.white.withValues(alpha: 0.10) : Colors.black.withValues(alpha: 0.08);
-    final soft = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04);
+    final stroke = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.black.withValues(alpha: 0.08);
+    final soft = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
     final text = isDark ? AppColors.white : Colors.black;
-    final sub = isDark ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.62);
+    final sub = isDark
+        ? Colors.white.withValues(alpha: 0.72)
+        : Colors.black.withValues(alpha: 0.62);
 
     final positive = net >= 0;
+    final balanceColor = positive ? AppColors.green : Colors.red;
 
     return Container(
       width: double.infinity,
@@ -518,7 +604,7 @@ class _BankBalanceCard extends StatelessWidget {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: AppColors.green.withValues(alpha: positive ? 1 : 0.35),
+                  color: balanceColor,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -533,7 +619,7 @@ class _BankBalanceCard extends StatelessWidget {
               Text(
                 positive ? '+' : '',
                 style: theme.textTheme.headlineLarge?.copyWith(
-                  color: AppColors.green,
+                  color: balanceColor,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.8,
                 ),
@@ -541,7 +627,7 @@ class _BankBalanceCard extends StatelessWidget {
               Text(
                 Fmt.money(net.abs()),
                 style: theme.textTheme.headlineLarge?.copyWith(
-                  color: AppColors.green,
+                  color: balanceColor,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.8,
                 ),
@@ -590,6 +676,91 @@ class _BankBalanceCard extends StatelessWidget {
               ),
             ],
           ),
+          if (disputed > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.orange.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.report_problem_outlined,
+                    color: Colors.orange,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Disputed',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: text,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    Fmt.money(disputed),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (settlements.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...settlements.map((transfer) {
+              final isPayment = transfer.fromUid == myUid;
+              final otherUid = isPayment ? transfer.toUid : transfer.fromUid;
+              final otherName =
+                  memberMap[otherUid]?.displayName ?? 'Unknown member';
+
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      isPayment
+                          ? Icons.arrow_outward_rounded
+                          : Icons.arrow_downward_rounded,
+                      size: 18,
+                      color: isPayment ? Colors.red : AppColors.green,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isPayment
+                            ? 'Pay $otherName'
+                            : 'Receive from $otherName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: text,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      Fmt.money(transfer.amount),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isPayment ? Colors.red : AppColors.green,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );
@@ -659,7 +830,7 @@ class _MetricTile extends StatelessWidget {
     required this.label,
     required this.value,
     this.isAccent = false, //  default
-    this.onTap,            //  optional
+    this.onTap, //  optional
   });
 
   @override
@@ -668,16 +839,21 @@ class _MetricTile extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     final bg = isDark ? AppColors.black : AppColors.white;
-    final stroke = isDark ? Colors.white.withValues(alpha: 0.10) : Colors.black.withValues(alpha: 0.08);
+    final stroke = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.black.withValues(alpha: 0.08);
     final text = isDark ? AppColors.white : Colors.black;
-    final sub = isDark ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.62);
+    final sub = isDark
+        ? Colors.white.withValues(alpha: 0.72)
+        : Colors.black.withValues(alpha: 0.62);
 
     final accentBg = isDark
         ? AppColors.green.withValues(alpha: 0.14)
         : AppColors.green.withValues(alpha: 0.10);
 
     final tileBg = isAccent ? accentBg : bg;
-    final tileBorder = isAccent ? AppColors.green.withValues(alpha: 0.35) : stroke;
+    final tileBorder =
+        isAccent ? AppColors.green.withValues(alpha: 0.35) : stroke;
 
     final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -740,6 +916,4 @@ class _MetricTile extends StatelessWidget {
       child: content,
     );
   }
-
-
 }

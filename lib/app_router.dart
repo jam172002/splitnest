@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:splitnest/presentation/screens/auth/register_screen.dart';
+import 'package:splitnest/presentation/screens/auth/forgot_password_screen.dart';
 import 'package:splitnest/presentation/screens/group/add_edit_bill_screen.dart';
 import 'package:splitnest/presentation/screens/group/add_income_screen.dart';
 import 'package:splitnest/presentation/screens/group/bills_screen.dart';
@@ -10,6 +11,7 @@ import 'package:splitnest/presentation/screens/group/group_info_screen.dart';
 import 'package:splitnest/presentation/screens/group/group_tx_detail_screen.dart';
 import 'package:splitnest/presentation/screens/personal/add_personal_tx_screen.dart';
 import 'package:splitnest/presentation/screens/personal/personal_lock_wrapper.dart';
+import 'package:splitnest/presentation/screens/notifications_screen.dart';
 
 import 'data/auth_repo.dart';
 import '../presentation/app_shell.dart';
@@ -31,7 +33,6 @@ final appRouter = GoRouter(
   initialLocation: '/splash',
   debugLogDiagnostics: true,
   errorBuilder: (context, state) => const NotFoundScreen(),
-
   redirect: (BuildContext context, GoRouterState state) {
     final location = state.uri.path;
     final authRepo = Provider.of<AuthRepo>(context, listen: false);
@@ -41,7 +42,7 @@ final appRouter = GoRouter(
       return isLoggedIn ? '/' : '/login';
     }
 
-    final publicAuthPaths = ['/login', '/register'];
+    final publicAuthPaths = ['/login', '/register', '/forgot-password'];
     if (publicAuthPaths.contains(location)) {
       if (isLoggedIn) return '/';
       return null;
@@ -50,7 +51,6 @@ final appRouter = GoRouter(
     if (!isLoggedIn) return '/login';
     return null;
   },
-
   routes: [
     // Public routes
     GoRoute(
@@ -65,6 +65,10 @@ final appRouter = GoRouter(
       path: '/register',
       builder: (context, state) => const RegisterScreen(),
     ),
+    GoRoute(
+      path: '/forgot-password',
+      builder: (context, state) => const ForgotPasswordScreen(),
+    ),
 
     GoRoute(
       path: '/group/:groupId/tx/:txId',
@@ -77,6 +81,16 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/group/:groupId/combined',
       builder: (context, state) => GroupCombinedScreen(
+        groupId: state.pathParameters['groupId']!,
+      ),
+    ),
+    GoRoute(
+      path: '/notifications',
+      builder: (context, state) => const NotificationsScreen(),
+    ),
+    GoRoute(
+      path: '/group/:groupId/notifications',
+      builder: (context, state) => NotificationsScreen(
         groupId: state.pathParameters['groupId']!,
       ),
     ),
@@ -165,6 +179,14 @@ final appRouter = GoRouter(
           ),
         ),
         GoRoute(
+          path: 'expense/:txId/edit',
+          name: 'edit_expense',
+          builder: (context, state) => AddExpenseScreen(
+            groupId: state.pathParameters['groupId']!,
+            txId: state.pathParameters['txId']!,
+          ),
+        ),
+        GoRoute(
           path: 'add-settlement',
           name: 'add_settlement',
           builder: (context, state) => AddSettlementScreen(
@@ -172,7 +194,6 @@ final appRouter = GoRouter(
           ),
         ),
       ],
-
     ),
     GoRoute(
       path: 'bills',

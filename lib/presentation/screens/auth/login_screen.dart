@@ -18,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
   bool _busy = false;
+  bool _obscurePassword = true;
   String? _err;
 
   @override
@@ -37,14 +38,16 @@ class _LoginScreenState extends State<LoginScreen> {
       _busy = true;
       _err = null;
     });
+    final authRepo = context.read<AuthRepo>();
+    final notificationsRepo = context.read<NotificationsRepo>();
+
     try {
-      await context.read<AuthRepo>().login(_email.text.trim(), _pass.text.trim());
-      final uid = context.read<AuthRepo>().currentUser!.uid;
-      await context.read<NotificationsRepo>().initAndSaveToken(uid);
+      await authRepo.login(_email.text.trim(), _pass.text.trim());
+      final uid = authRepo.currentUser!.uid;
+      await notificationsRepo.initAndSaveToken(uid);
       if (mounted) context.go('/');
-    } catch (e) {
-      // Friendly error mapping
-      setState(() => _err = "Invalid email or password");
+    } catch (_) {
+      if (mounted) setState(() => _err = 'Invalid email or password');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -103,15 +106,36 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 16),
               TextField(
                 controller: _pass,
-                obscureText: true,
+                obscureText: _obscurePassword,
                 onSubmitted: (_) => _login(),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Password',
-                  prefixIcon: Icon(Icons.lock_outline_rounded),
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  suffixIcon: IconButton(
+                    tooltip:
+                        _obscurePassword ? 'Show password' : 'Hide password',
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
                 ),
               ),
 
-              const SizedBox(height: 24),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed:
+                      _busy ? null : () => context.push('/forgot-password'),
+                  child: const Text('Forgot password?'),
+                ),
+              ),
+
+              const SizedBox(height: 8),
 
               if (_err != null)
                 Padding(
@@ -123,11 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-              BusyButton(
-                  busy: _busy,
-                  onPressed: _login,
-                  text: 'Sign In'
-              ),
+              BusyButton(busy: _busy, onPressed: _login, text: 'Sign In'),
 
               const SizedBox(height: 16),
 
@@ -140,7 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   TextButton(
                     onPressed: () => context.go('/register'),
-                    child: const Text('Create one'),
+                    child: const Text('Sign up'),
                   ),
                 ],
               ),
