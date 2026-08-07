@@ -816,15 +816,14 @@ class _BankHeader extends StatelessWidget {
 
           const SizedBox(height: 6),
 
-          Row(
-            children: [
-              PeriodSelector(
-                initial: homePeriod,
-                onChanged: onHomeRangeChanged,
-                onTypeChanged: onHomePeriodChanged,
-                onLabelChanged: onHomePeriodLabelChanged,
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: PeriodSelector(
+              initial: homePeriod,
+              onChanged: onHomeRangeChanged,
+              onTypeChanged: onHomePeriodChanged,
+              onLabelChanged: onHomePeriodLabelChanged,
+            ),
           ),
 
           const SizedBox(height: 8),

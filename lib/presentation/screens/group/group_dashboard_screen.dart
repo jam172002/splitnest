@@ -342,15 +342,14 @@ class _DashboardBodyState extends State<_DashboardBody> {
 
               const SizedBox(height: 14),
 
-              Row(
-                children: [
-                  PeriodSelector(
-                    initial: _period,
-                    onChanged: (r) => setState(() => _range = r),
-                    onTypeChanged: (t) => setState(() => _period = t),
-                    onLabelChanged: (l) => setState(() => _periodLabel = l),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PeriodSelector(
+                  initial: _period,
+                  onChanged: (r) => setState(() => _range = r),
+                  onTypeChanged: (t) => setState(() => _period = t),
+                  onLabelChanged: (l) => setState(() => _periodLabel = l),
+                ),
               ),
               const SizedBox(height: 10),
               _MetricTile(
