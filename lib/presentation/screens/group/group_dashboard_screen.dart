@@ -241,6 +241,8 @@ class _DashboardBodyState extends State<_DashboardBody> {
   static const Color kBrandGreen = Color(0xFF20C84A);
 
   PeriodType _period = PeriodType.month;
+  String _periodLabel = 'This Month';
+  DateRange? _range;
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +269,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
             (transfer) => transfer.fromUid == myUid || transfer.toUid == myUid)
         .toList();
 
-    final periodRange = rangeForPeriod(_period);
+    final periodRange = _range ?? rangeForPeriod(_period);
     double periodTotal = 0;
     for (var tx in transactions) {
       if (tx.status != TxStatus.approved) continue;
@@ -344,14 +346,15 @@ class _DashboardBodyState extends State<_DashboardBody> {
                 children: [
                   PeriodSelector(
                     initial: _period,
-                    onChanged: (r) {},
+                    onChanged: (r) => setState(() => _range = r),
                     onTypeChanged: (t) => setState(() => _period = t),
+                    onLabelChanged: (l) => setState(() => _periodLabel = l),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
               _MetricTile(
-                label: _period == PeriodType.week ? 'This week' : 'This month',
+                label: _periodLabel,
                 value: Fmt.money(periodTotal),
               ),
               const SizedBox(height: 10),

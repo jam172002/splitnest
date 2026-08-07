@@ -36,6 +36,8 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
   // defaulting to the current month.
   bool _hideNets = true;
   PeriodType _homePeriod = PeriodType.month;
+  String _homePeriodLabel = 'This Month';
+  DateRange? _homeRange;
 
   // Each transaction has its own hide toggle (default hidden)
   final Map<String, bool> _txHidden = {}; // txId -> hidden?
@@ -350,8 +352,8 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
           // Balance (simple cashflow view)
           final balance = totalIncome - totalExpense;
 
-          // ---- Net for the selected period (Week/Month, defaults to current month)
-          final homeRange = rangeForPeriod(_homePeriod);
+          // ---- Net for the selected period (Week/Month, any period — defaults to current month)
+          final homeRange = _homeRange ?? rangeForPeriod(_homePeriod);
           double periodNet = 0;
           for (final t in items) {
             if (homeRange.contains(t.at)) {
@@ -402,7 +404,10 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                   receivable: receivableOutstanding,
                   periodNet: periodNet,
                   homePeriod: _homePeriod,
+                  periodLabel: _homePeriodLabel,
                   onHomePeriodChanged: (p) => setState(() => _homePeriod = p),
+                  onHomePeriodLabelChanged: (l) => setState(() => _homePeriodLabel = l),
+                  onHomeRangeChanged: (r) => setState(() => _homeRange = r),
                 ),
               ),
 
@@ -648,7 +653,10 @@ class _BankHeader extends StatelessWidget {
 
   final double periodNet;
   final PeriodType homePeriod;
+  final String periodLabel;
   final ValueChanged<PeriodType> onHomePeriodChanged;
+  final ValueChanged<String> onHomePeriodLabelChanged;
+  final ValueChanged<DateRange> onHomeRangeChanged;
 
   const _BankHeader({
     required this.hideBalance,
@@ -670,7 +678,10 @@ class _BankHeader extends StatelessWidget {
     required this.receivable,
     required this.periodNet,
     required this.homePeriod,
+    required this.periodLabel,
     required this.onHomePeriodChanged,
+    required this.onHomePeriodLabelChanged,
+    required this.onHomeRangeChanged,
   });
 
   @override
@@ -809,8 +820,9 @@ class _BankHeader extends StatelessWidget {
             children: [
               PeriodSelector(
                 initial: homePeriod,
-                onChanged: (r) {},
+                onChanged: onHomeRangeChanged,
                 onTypeChanged: onHomePeriodChanged,
+                onLabelChanged: onHomePeriodLabelChanged,
               ),
             ],
           ),
@@ -818,7 +830,7 @@ class _BankHeader extends StatelessWidget {
           const SizedBox(height: 8),
 
           _MiniNet(
-            label: homePeriod == PeriodType.week ? 'This Week' : 'This Month',
+            label: periodLabel,
             value: periodNet,
             hide: hideNets,
           ),
