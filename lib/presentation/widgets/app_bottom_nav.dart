@@ -38,7 +38,7 @@ class AppBottomNav extends StatelessWidget {
       minimum: const EdgeInsets.fromLTRB(20, 0, 20, 14),
       top: false,
       child: SizedBox(
-        height: 78,
+        height: 66,
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
@@ -48,15 +48,23 @@ class AppBottomNav extends StatelessWidget {
               right: 0,
               bottom: 0,
               child: Container(
-                height: 64,
+                height: 54,
                 decoration: BoxDecoration(
                   color: AppColors.card(isDark),
-                  borderRadius: BorderRadius.circular(32),
+                  borderRadius: BorderRadius.circular(27),
                   boxShadow: [
+                    // Wide, soft ambient shadow for lift off the page
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.10),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
+                      color: Colors.black.withValues(alpha: isDark ? 0.55 : 0.20),
+                      blurRadius: 30,
+                      spreadRadius: -2,
+                      offset: const Offset(0, 16),
+                    ),
+                    // Tighter shadow for a defined edge close to the bar
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
@@ -106,37 +114,32 @@ class _NavIcon extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
-          width: 56,
-          height: 64,
-          child: AnimatedSlide(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            offset: selected ? const Offset(0, -0.22) : Offset.zero,
-            child: Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                width: selected ? 52 : 40,
-                height: selected ? 52 : 40,
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.green : Colors.transparent,
-                  shape: BoxShape.circle,
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: AppColors.green.withValues(alpha: 0.45),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ]
-                      : null,
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  selected ? item.selectedIcon : item.icon,
-                  color: selected ? AppColors.white : unselectedColor,
-                  size: selected ? 26 : 24,
-                ),
+          width: 50,
+          height: 54,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              width: selected ? 46 : 36,
+              height: selected ? 46 : 36,
+              decoration: BoxDecoration(
+                color: selected ? AppColors.green : Colors.transparent,
+                shape: BoxShape.circle,
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: AppColors.green.withValues(alpha: 0.45),
+                          blurRadius: 12,
+                          offset: const Offset(0, 5),
+                        ),
+                      ]
+                    : null,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                selected ? item.selectedIcon : item.icon,
+                color: selected ? AppColors.white : unselectedColor,
+                size: selected ? 23 : 22,
               ),
             ),
           ),
