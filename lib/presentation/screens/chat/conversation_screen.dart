@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../core/format.dart';
 import '../../../data/auth_repo.dart';
 import '../../../data/chat_repo.dart';
+import '../../../data/group_repo.dart';
 import '../../widgets/app_scaffold.dart';
 
 enum _ConversationAction { giveLoan, payLoan, settlement }
@@ -113,6 +114,34 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
+  Future<void> _joinGroupInvite(
+    BuildContext context,
+    String groupId,
+    String groupName,
+  ) async {
+    final authRepo = context.read<AuthRepo>();
+    final groupRepo = context.read<GroupRepo>();
+    final user = authRepo.currentUser!;
+    try {
+      final group = await groupRepo.getGroup(groupId);
+      if (!group.memberUids.contains(user.uid)) {
+        await groupRepo.joinGroup(
+          groupId: groupId,
+          uid: user.uid,
+          email: user.email ?? '',
+        );
+      }
+      if (context.mounted) context.push('/group/$groupId');
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = context.read<AuthRepo>().currentUser!.uid;
@@ -192,6 +221,59 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           final data = messages[index].data();
                           final mine = data['senderUid'] == uid;
                           final type = data['type'] as String? ?? 'text';
+
+                          if (type == 'group_invite') {
+                            final groupId = data['groupId'] as String? ?? '';
+                            final groupName =
+                                data['groupName'] as String? ?? 'Group';
+                            return Align(
+                              alignment: mine
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Container(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 300),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: colors.tertiaryContainer,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.groups_rounded),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Group invite: $groupName',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    FilledButton(
+                                      onPressed: groupId.isEmpty
+                                          ? null
+                                          : () => _joinGroupInvite(
+                                                context,
+                                                groupId,
+                                                groupName,
+                                              ),
+                                      child: const Text('View & Join'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
                           return Align(
                             alignment: mine
                                 ? Alignment.centerRight

@@ -23,11 +23,21 @@ class _GroupTransactionHistoryScreenState
     extends State<GroupTransactionHistoryScreen> {
   String? payerFilterUid;
   String? participantFilterUid;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _clearFilters() {
     setState(() {
       payerFilterUid = null;
       participantFilterUid = null;
+      _searchQuery = '';
+      _searchController.clear();
     });
   }
 
@@ -71,11 +81,41 @@ class _GroupTransactionHistoryScreenState
                     ? true
                     : tx.participants.contains(participantFilterUid);
 
-                return passPayer && passParticipant;
+                final q = _searchQuery.trim().toLowerCase();
+                final passSearch = q.isEmpty
+                    ? true
+                    : (tx.category ?? '').toLowerCase().contains(q) ||
+                        (tx.description ?? '').toLowerCase().contains(q);
+
+                return passPayer && passParticipant && passSearch;
               }).toList();
 
               return Column(
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search by category or description',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () => setState(() {
+                                  _searchQuery = '';
+                                  _searchController.clear();
+                                }),
+                              ),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
                   _FilterBar(
                     members: members,
                     memberMap: memberMap,

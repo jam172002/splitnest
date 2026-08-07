@@ -6,10 +6,14 @@ import 'package:provider/provider.dart';
 
 import '../../../core/format.dart';
 import '../../../data/auth_repo.dart';
+import '../../../data/chat_repo.dart';
+import '../../../data/group_repo.dart';
 import '../../../data/personal_repo.dart';
+import '../../../domain/models/debt_aggregator.dart';
 import '../../../domain/models/personal_tx.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/empty_hint.dart';
+import '../../widgets/period_selector.dart';
 
 // Uses only: green / white / black via your app theme.
 // The screen uses Theme colors (primary = AppColors.green).
@@ -28,13 +32,78 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
   bool _hideToPay = true;
   bool _hideToReceive = true;
 
-  // Nets share one toggle (today/week/month)
+  // Net-for-period shares one toggle; period is selectable (Week/Month),
+  // defaulting to the current month.
   bool _hideNets = true;
+  PeriodType _homePeriod = PeriodType.month;
 
   // Each transaction has its own hide toggle (default hidden)
   final Map<String, bool> _txHidden = {}; // txId -> hidden?
 
   Timer? _autoHideTimer;
+
+  // Group + friend-loan balances, aggregated alongside the personal ledger.
+  // Loaded on-demand (not a live stream) since it fans out across every
+  // group and friend the user has — see DebtAggregator for the merge logic.
+  Future<List<DebtEntry>>? _externalDebtsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshExternalDebts());
+  }
+
+  void _refreshExternalDebts() {
+    final uid = context.read<AuthRepo>().currentUser?.uid;
+    if (uid == null) return;
+    setState(() {
+      _externalDebtsFuture = _loadExternalDebts(
+        uid,
+        context.read<GroupRepo>(),
+        context.read<ChatRepo>(),
+      );
+    });
+  }
+
+  Future<List<DebtEntry>> _loadExternalDebts(
+    String uid,
+    GroupRepo groupRepo,
+    ChatRepo chatRepo,
+  ) async {
+    // Groups: sum each group's net balance for this user.
+    final groups = await groupRepo.watchMyGroups(uid).first;
+    final netByGroup = <String, double>{};
+    final groupNames = <String, String>{};
+    for (final g in groups) {
+      final balances = await groupRepo.calculateMemberBalances(g.id);
+      final mine = balances[uid] ?? 0.0;
+      if (mine.abs() > 0.005) {
+        netByGroup[g.id] = mine;
+        groupNames[g.id] = g.name;
+      }
+    }
+
+    // Friends: sum each friend's P2P chat-loan balance.
+    final friendsSnap = await chatRepo.watchFriends(uid).first;
+    final balanceByFriend = <String, double>{};
+    final friendNames = <String, String>{};
+    for (final doc in friendsSnap.docs) {
+      final friendUid = doc.id;
+      final chatId = chatRepo.chatIdFor(uid, friendUid);
+      final loanSnap = await chatRepo.watchLoanTransactions(chatId).first;
+      final balance = chatRepo.loanBalanceFor(loanSnap.docs, uid);
+      if (balance.abs() > 0.005) {
+        balanceByFriend[friendUid] = balance;
+        final userDoc = await chatRepo.watchUser(friendUid).first;
+        friendNames[friendUid] = (userDoc.data()?['name'] as String?) ?? 'Friend';
+      }
+    }
+
+    return [
+      ...DebtAggregator.fromGroupBalances(netByGroup: netByGroup, groupNames: groupNames),
+      ...DebtAggregator.fromFriendLoans(balanceByFriendUid: balanceByFriend, friendNames: friendNames),
+    ];
+  }
 
   bool _isTxHidden(String id) => _txHidden[id] ?? true;
 
@@ -232,6 +301,13 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
 
     return AppScaffold(
       title: 'Personal Ledger',
+      actions: [
+        IconButton(
+          tooltip: 'Analytics',
+          icon: const Icon(Icons.bar_chart_rounded),
+          onPressed: () => context.push('/app/personal/analytics'),
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/app/personal/add'),
         icon: const Icon(Icons.add),
@@ -242,10 +318,6 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
         builder: (context, snap) {
           final items = (snap.data ?? []).toList();
 
-          if (items.isEmpty) {
-            return const EmptyHint('No personal entries yet.');
-          }
-
           // ---- Sort newest first
           items.sort((a, b) => b.at.compareTo(a.at));
 
@@ -253,10 +325,8 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
           double totalIncome = 0;
           double totalExpense = 0;
 
-          // Loans principal
+          // Loans principal (still needed for the recent-activity signed amounts below)
           final Map<String, PersonalTx> loanPrincipals = {};
-          // Payments sum by loan id
-          final Map<String, double> paidByLoan = {};
 
           for (final t in items) {
             switch (t.type) {
@@ -269,70 +339,45 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
 
               case PersonalTxType.loanGiven:
               case PersonalTxType.loanTaken:
-                final loanId = t.loanId ?? t.id;
-                loanPrincipals[loanId] = t;
+                loanPrincipals[t.loanId ?? t.id] = t;
                 break;
 
               case PersonalTxType.loanPayment:
-                final id = t.targetLoanId;
-                if (id != null) {
-                  paidByLoan[id] = (paidByLoan[id] ?? 0) + t.amount;
-                }
                 break;
-            }
-          }
-
-          // ---- Compute outstanding loans
-          // Payable = you took loan and still owe
-          // Receivable = you gave loan and still have to receive
-          double payableOutstanding = 0;
-          double receivableOutstanding = 0;
-
-          final payableLoans = <_LoanRow>[];
-          final receivableLoans = <_LoanRow>[];
-
-          for (final e in loanPrincipals.entries) {
-            final loanId = e.key;
-            final principal = e.value;
-            final paid = paidByLoan[loanId] ?? 0;
-            final remaining = (principal.amount - paid);
-            if (remaining <= 0.00001) continue;
-
-            if (principal.type == PersonalTxType.loanTaken) {
-              payableOutstanding += remaining;
-              payableLoans.add(_LoanRow(
-                loanId: loanId,
-                title: principal.title,
-                counterparty: principal.counterparty,
-                remaining: remaining,
-              ));
-            } else {
-              receivableOutstanding += remaining;
-              receivableLoans.add(_LoanRow(
-                loanId: loanId,
-                title: principal.title,
-                counterparty: principal.counterparty,
-                remaining: remaining,
-              ));
             }
           }
 
           // Balance (simple cashflow view)
           final balance = totalIncome - totalExpense;
 
-          // ---- Date stats (today/week/month) for expenses + incomes (optional)
-          final now = DateTime.now();
-          final weekStart = now.subtract(Duration(days: now.weekday - 1));
-
-          double todayNet = 0, weekNet = 0, monthNet = 0;
+          // ---- Net for the selected period (Week/Month, defaults to current month)
+          final homeRange = rangeForPeriod(_homePeriod);
+          double periodNet = 0;
           for (final t in items) {
-            final signed = _signedAmount(t, loanPrincipals);
-            if (DateUtils.isSameDay(t.at, now)) todayNet += signed;
-            if (t.at.isAfter(weekStart.subtract(const Duration(seconds: 1)))) weekNet += signed;
-            if (t.at.year == now.year && t.at.month == now.month) monthNet += signed;
+            if (homeRange.contains(t.at)) {
+              periodNet += _signedAmount(t, loanPrincipals);
+            }
           }
 
-          return CustomScrollView(
+          return FutureBuilder<List<DebtEntry>>(
+            future: _externalDebtsFuture,
+            builder: (context, extSnap) {
+              // ---- Unify personal loans + group balances + friend chat loans
+              final personalEntries = DebtAggregator.fromPersonalLoans(items);
+              final allEntries = <DebtEntry>[...personalEntries, ...(extSnap.data ?? const <DebtEntry>[])];
+              final totals = DebtAggregator.summarize(allEntries);
+              final payableOutstanding = totals.payable;
+              final receivableOutstanding = totals.receivable;
+              final payableLoans = totals.entries.where((e) => e.isPayable).toList();
+              final receivableLoans = totals.entries.where((e) => e.isReceivable).toList();
+
+              if (items.isEmpty && allEntries.isEmpty) {
+                return const EmptyHint('No personal entries yet.');
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async => _refreshExternalDebts(),
+                child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
                 child: _BankHeader(
@@ -355,9 +400,9 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                   expense: totalExpense,
                   payable: payableOutstanding,
                   receivable: receivableOutstanding,
-                  monthNet: monthNet,
-                  todayNet: todayNet,
-                  weekNet: weekNet,
+                  periodNet: periodNet,
+                  homePeriod: _homePeriod,
+                  onHomePeriodChanged: (p) => setState(() => _homePeriod = p),
                 ),
               ),
 
@@ -383,7 +428,7 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                         hide: _hideToPay, // independent
                         rows: payableLoans,
                         emptyText: 'No payable loans',
-                        onPay: (loanId) => context.push('/app/personal/add?payLoan=$loanId'),
+                        onTap: (e) => _openDebtEntry(context, e, isPayCard: true),
                       ),
                       const SizedBox(height: 12),
                       _LoansCard(
@@ -392,7 +437,7 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                         hide: _hideToReceive, // independent
                         rows: receivableLoans,
                         emptyText: 'No receivable loans',
-                        onPay: (loanId) => context.push('/app/personal/add?receiveLoan=$loanId'),
+                        onTap: (e) => _openDebtEntry(context, e, isPayCard: false),
                       ),
                     ],
                   ),
@@ -471,10 +516,28 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
 
               const SliverToBoxAdapter(child: SizedBox(height: 90)),
             ],
+                ),
+              );
+            },
           );
         },
       ),
     );
+  }
+
+  void _openDebtEntry(BuildContext context, DebtEntry e, {required bool isPayCard}) {
+    switch (e.source) {
+      case DebtSource.personal:
+        final param = isPayCard ? 'payLoan' : 'receiveLoan';
+        context.push('/app/personal/add?$param=${e.loanId}');
+        break;
+      case DebtSource.group:
+        context.push('/group/${e.groupId}');
+        break;
+      case DebtSource.friend:
+        context.push('/chat/${e.friendUid}');
+        break;
+    }
   }
 
   // Treat loan payments:
@@ -583,9 +646,9 @@ class _BankHeader extends StatelessWidget {
   final double payable;
   final double receivable;
 
-  final double monthNet;
-  final double todayNet;
-  final double weekNet;
+  final double periodNet;
+  final PeriodType homePeriod;
+  final ValueChanged<PeriodType> onHomePeriodChanged;
 
   const _BankHeader({
     required this.hideBalance,
@@ -605,9 +668,9 @@ class _BankHeader extends StatelessWidget {
     required this.expense,
     required this.payable,
     required this.receivable,
-    required this.monthNet,
-    required this.todayNet,
-    required this.weekNet,
+    required this.periodNet,
+    required this.homePeriod,
+    required this.onHomePeriodChanged,
   });
 
   @override
@@ -721,7 +784,7 @@ class _BankHeader extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // ✅ Better net toggle placement (single eye for all nets)
+          // ✅ Net for a selectable period (defaults to current month)
           Row(
             children: [
               Text(
@@ -744,12 +807,20 @@ class _BankHeader extends StatelessWidget {
 
           Row(
             children: [
-              Expanded(child: _MiniNet(label: 'Today', value: todayNet, hide: hideNets)),
-              const SizedBox(width: 8),
-              Expanded(child: _MiniNet(label: 'Week', value: weekNet, hide: hideNets)),
-              const SizedBox(width: 8),
-              Expanded(child: _MiniNet(label: 'Month', value: monthNet, hide: hideNets)),
+              PeriodSelector(
+                initial: homePeriod,
+                onChanged: (r) {},
+                onTypeChanged: onHomePeriodChanged,
+              ),
             ],
+          ),
+
+          const SizedBox(height: 8),
+
+          _MiniNet(
+            label: homePeriod == PeriodType.week ? 'This Week' : 'This Month',
+            value: periodNet,
+            hide: hideNets,
           ),
         ],
       ),
@@ -883,27 +954,13 @@ class _MoneyText extends StatelessWidget {
   }
 }
 
-class _LoanRow {
-  final String loanId;
-  final String title;
-  final String? counterparty;
-  final double remaining;
-
-  _LoanRow({
-    required this.loanId,
-    required this.title,
-    required this.remaining,
-    required this.counterparty,
-  });
-}
-
 class _LoansCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool hide;
-  final List<_LoanRow> rows;
+  final List<DebtEntry> rows;
   final String emptyText;
-  final void Function(String loanId) onPay;
+  final ValueChanged<DebtEntry> onTap;
 
   const _LoansCard({
     required this.title,
@@ -911,8 +968,19 @@ class _LoansCard extends StatelessWidget {
     required this.hide,
     required this.rows,
     required this.emptyText,
-    required this.onPay,
+    required this.onTap,
   });
+
+  static String _sourceLabel(DebtEntry e) {
+    switch (e.source) {
+      case DebtSource.personal:
+        return 'Personal';
+      case DebtSource.group:
+        return 'Group';
+      case DebtSource.friend:
+        return 'Friend';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -942,16 +1010,14 @@ class _LoansCard extends StatelessWidget {
             child: Text(emptyText, style: theme.textTheme.bodyMedium),
           )
         else
-          ...rows.take(4).map((r) {
-            final name = (r.counterparty == null || r.counterparty!.trim().isEmpty)
-                ? r.title
-                : '${r.title} • ${r.counterparty}';
+          ...rows.take(6).map((r) {
+            final amount = r.amount.abs();
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                onTap: () => onPay(r.loanId),
+                onTap: () => onTap(r),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
@@ -964,16 +1030,28 @@ class _LoansCard extends StatelessWidget {
                       const Icon(Icons.account_balance_wallet_rounded),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          name,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              r.label,
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              _sourceLabel(r),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        hide ? '*****' : Fmt.money(r.remaining),
+                        hide ? '*****' : Fmt.money(amount),
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(width: 8),

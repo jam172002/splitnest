@@ -32,8 +32,11 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
   // For loan payment
   String? _targetLoanId;
 
-  final List<String> _quickExpense = ['Groceries', 'Food', 'Transport', 'Rent', 'Medicine'];
-  final List<String> _quickIncome = ['Salary', 'Freelance', 'Refund', 'Bonus'];
+  // Category for expense/income (feeds personal analytics charts)
+  String? _category;
+
+  final List<String> _quickExpense = ['Groceries', 'Food', 'Transport', 'Rent', 'Medicine', 'Other'];
+  final List<String> _quickIncome = ['Salary', 'Freelance', 'Refund', 'Bonus', 'Other'];
 
   @override
   void initState() {
@@ -81,6 +84,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
           type: _type,
           counterparty: _counterparty.text.trim().isEmpty ? null : _counterparty.text.trim(),
           targetLoanId: _type == PersonalTxType.loanPayment ? _targetLoanId : null,
+          category: (_type == PersonalTxType.expense || _type == PersonalTxType.income) ? _category : null,
         );
       } else {
         // ✅ ADD new tx
@@ -92,6 +96,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
           type: _type,
           counterparty: _counterparty.text.trim().isEmpty ? null : _counterparty.text.trim(),
           targetLoanId: _type == PersonalTxType.loanPayment ? _targetLoanId : null,
+          category: (_type == PersonalTxType.expense || _type == PersonalTxType.income) ? _category : null,
         );
       }
 
@@ -135,6 +140,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
         _amount.text = tx.amount.toString();
         _counterparty.text = tx.counterparty ?? '';
         _targetLoanId = tx.targetLoanId;
+        _category = tx.category;
         _loadingEdit = false;
       });
 
@@ -252,30 +258,56 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
 
             const SizedBox(height: 14),
 
-            // Quick select (expense/income only)
+            // Category (expense/income only) — drives the analytics charts
             if (_type == PersonalTxType.expense || _type == PersonalTxType.income) ...[
-              Text('Quick Select', style: theme.textTheme.labelMedium),
+              Text('Category', style: theme.textTheme.labelMedium),
               const SizedBox(height: 8),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: quick
-                      .map(
-                        (cat) => Padding(
+                  children: [
+                    ...quick.map(
+                      (cat) => Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(cat),
+                          selected: _category == cat,
+                          onSelected: (_) => setState(() => _category = cat),
+                          backgroundColor: cs.surface,
+                          selectedColor: cs.primary.withValues(alpha: 0.18),
+                          shape: StadiumBorder(
+                            side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.35)),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: ActionChip(
-                        label: Text(cat),
-                        onPressed: () => setState(() => _title.text = cat),
+                        avatar: const Icon(Icons.add, size: 16),
+                        label: const Text('Custom'),
+                        onPressed: () async {
+                          final custom = await _askCustomCategory(context);
+                          if (custom != null && custom.isNotEmpty) {
+                            setState(() => _category = custom);
+                          }
+                        },
                         backgroundColor: cs.surface,
                         shape: StadiumBorder(
                           side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.35)),
                         ),
                       ),
                     ),
-                  )
-                      .toList(),
+                  ],
                 ),
               ),
+              if (_category != null && !quick.contains(_category)) ...[
+                const SizedBox(height: 8),
+                Chip(
+                  label: Text(_category!),
+                  onDeleted: () => setState(() => _category = null),
+                ),
+              ],
               const SizedBox(height: 16),
             ],
 
@@ -309,6 +341,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
       onTap: () => setState(() {
         _type = t;
         _targetLoanId = null;
+        _category = null;
         _err = null;
 
         // Helpful defaults
@@ -374,6 +407,36 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
         return 'e.g. Borrowed from Ahmed';
       case PersonalTxType.loanPayment:
         return 'e.g. Paid installment';
+    }
+  }
+
+  Future<String?> _askCustomCategory(BuildContext context) async {
+    final ctrl = TextEditingController();
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Custom category'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(hintText: 'e.g. Subscriptions'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
     }
   }
 

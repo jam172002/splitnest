@@ -5,11 +5,17 @@ import 'package:splitnest/presentation/screens/auth/register_screen.dart';
 import 'package:splitnest/presentation/screens/auth/forgot_password_screen.dart';
 import 'package:splitnest/presentation/screens/group/add_edit_bill_screen.dart';
 import 'package:splitnest/presentation/screens/group/add_income_screen.dart';
+import 'package:splitnest/presentation/screens/group/approvals_screen.dart';
 import 'package:splitnest/presentation/screens/group/bills_screen.dart';
+import 'package:splitnest/presentation/screens/group/categories_screen.dart';
 import 'package:splitnest/presentation/screens/group/group_combined_screen.dart';
 import 'package:splitnest/presentation/screens/group/group_info_screen.dart';
 import 'package:splitnest/presentation/screens/group/group_tx_detail_screen.dart';
+import 'package:splitnest/presentation/screens/group/member_transaction_detail_screen.dart';
+import 'package:splitnest/presentation/screens/group/transaction_history_screen.dart';
+import 'package:splitnest/domain/models/group_member.dart';
 import 'package:splitnest/presentation/screens/personal/add_personal_tx_screen.dart';
+import 'package:splitnest/presentation/screens/personal/personal_analytics_screen.dart';
 import 'package:splitnest/presentation/screens/personal/personal_lock_wrapper.dart';
 import 'package:splitnest/presentation/screens/notifications_screen.dart';
 import 'package:splitnest/presentation/screens/chat/chat_home_screen.dart';
@@ -216,24 +222,53 @@ final appRouter = GoRouter(
             initialToUid: state.uri.queryParameters['toUid'],
           ),
         ),
-      ],
-    ),
-    GoRoute(
-      path: 'bills',
-      builder: (context, state) => BillsScreen(
-        groupId: state.pathParameters['groupId']!,
-      ),
-      routes: [
         GoRoute(
-          path: 'add',
-          builder: (context, state) => AddEditBillScreen(
+          path: 'bills',
+          builder: (context, state) => BillsScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+          routes: [
+            GoRoute(
+              path: 'add',
+              builder: (context, state) => AddEditBillScreen(
+                groupId: state.pathParameters['groupId']!,
+              ),
+            ),
+            GoRoute(
+              path: 'edit',
+              builder: (context, state) => AddEditBillScreen(
+                groupId: state.pathParameters['groupId']!,
+              ),
+            ),
+          ],
+        ),
+        GoRoute(
+          path: 'approvals',
+          name: 'group_approvals',
+          builder: (context, state) => ApprovalsScreen(
             groupId: state.pathParameters['groupId']!,
           ),
         ),
         GoRoute(
-          path: 'edit',
-          builder: (context, state) => AddEditBillScreen(
+          path: 'categories',
+          name: 'group_categories',
+          builder: (context, state) => CategoriesScreen(
             groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+        GoRoute(
+          path: 'transactions',
+          name: 'group_transactions',
+          builder: (context, state) => GroupTransactionHistoryScreen(
+            groupId: state.pathParameters['groupId']!,
+          ),
+        ),
+        GoRoute(
+          path: 'member/:memberId',
+          name: 'group_member_detail',
+          builder: (context, state) => MemberTransactionDetailScreen(
+            groupId: state.pathParameters['groupId']!,
+            member: state.extra as GroupMember,
           ),
         ),
       ],
@@ -242,6 +277,11 @@ final appRouter = GoRouter(
       path: '/app/personal/add',
       name: 'add_personal_expense',
       builder: (context, state) => const AddPersonalTxScreen(),
+    ),
+    GoRoute(
+      path: '/app/personal/analytics',
+      name: 'personal_analytics',
+      builder: (context, state) => const PersonalAnalyticsScreen(),
     ),
 
     GoRoute(

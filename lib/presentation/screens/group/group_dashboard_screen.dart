@@ -13,7 +13,7 @@ import '../../../domain/models/group_member.dart';
 import '../../../domain/models/tx.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/empty_hint.dart';
-import 'transaction_history_screen.dart';
+import '../../widgets/period_selector.dart';
 
 class GroupDashboardScreen extends StatelessWidget {
   final String groupId;
@@ -218,7 +218,7 @@ class GroupDashboardScreen extends StatelessWidget {
   }
 }
 
-class _DashboardBody extends StatelessWidget {
+class _DashboardBody extends StatefulWidget {
   final String groupId;
   final String myUid;
   final List<GroupMember> members;
@@ -233,10 +233,23 @@ class _DashboardBody extends StatelessWidget {
     required this.transactions,
   });
 
+  @override
+  State<_DashboardBody> createState() => _DashboardBodyState();
+}
+
+class _DashboardBodyState extends State<_DashboardBody> {
   static const Color kBrandGreen = Color(0xFF20C84A);
+
+  PeriodType _period = PeriodType.month;
 
   @override
   Widget build(BuildContext context) {
+    final groupId = widget.groupId;
+    final myUid = widget.myUid;
+    final members = widget.members;
+    final memberMap = widget.memberMap;
+    final transactions = widget.transactions;
+
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final notificationsRepo = context.read<NotificationsRepo>();
@@ -254,15 +267,11 @@ class _DashboardBody extends StatelessWidget {
             (transfer) => transfer.fromUid == myUid || transfer.toUid == myUid)
         .toList();
 
-    final now = DateTime.now();
-    double totalToday = 0;
-    double totalWeek = 0;
-    final weekStart = now.subtract(Duration(days: now.weekday - 1));
-
+    final periodRange = rangeForPeriod(_period);
+    double periodTotal = 0;
     for (var tx in transactions) {
       if (tx.status != TxStatus.approved) continue;
-      if (DateUtils.isSameDay(tx.at, now)) totalToday += tx.amount;
-      if (tx.at.isAfter(weekStart)) totalWeek += tx.amount;
+      if (periodRange.contains(tx.at)) periodTotal += tx.amount;
     }
 
     return FutureBuilder<bool>(
@@ -333,14 +342,17 @@ class _DashboardBody extends StatelessWidget {
 
               Row(
                 children: [
-                  Expanded(
-                      child: _MetricTile(
-                          label: 'Today', value: Fmt.money(totalToday))),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: _MetricTile(
-                          label: 'This week', value: Fmt.money(totalWeek))),
+                  PeriodSelector(
+                    initial: _period,
+                    onChanged: (r) {},
+                    onTypeChanged: (t) => setState(() => _period = t),
+                  ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              _MetricTile(
+                label: _period == PeriodType.week ? 'This week' : 'This month',
+                value: Fmt.money(periodTotal),
               ),
               const SizedBox(height: 10),
 
@@ -355,12 +367,9 @@ class _DashboardBody extends StatelessWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            GroupTransactionHistoryScreen(groupId: groupId),
-                      ),
+                    onPressed: () => context.pushNamed(
+                      'group_transactions',
+                      pathParameters: {'groupId': groupId},
                     ),
                     child: Text(
                       'View all',
@@ -414,7 +423,7 @@ class _DashboardBody extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => context.push('/group/$groupId/tx/${tx.id}'),
+      onTap: () => context.push('/group/${widget.groupId}/tx/${tx.id}'),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -466,7 +475,7 @@ class _DashboardBody extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               ...tx.payers.map((payer) {
-                final payerName = memberMap[payer.uid]?.name ?? 'Unknown';
+                final payerName = widget.memberMap[payer.uid]?.name ?? 'Unknown';
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 4),

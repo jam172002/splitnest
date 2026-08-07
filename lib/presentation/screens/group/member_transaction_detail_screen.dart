@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/format.dart';
 import '../../../data/group_repo.dart';
+import '../../../domain/models/expense_calculator.dart';
 import '../../../domain/models/group_member.dart';
 import '../../../domain/models/tx.dart';
 import '../../widgets/app_scaffold.dart';
@@ -46,15 +47,10 @@ class MemberTransactionDetailScreen extends StatelessWidget {
           final txs = snapshot.data ?? [];
 
           // --- Calculate Summary for Header ---
-          // Using member.id ensures math works even if names are duplicates
-          double totalPaid = 0;
-          double totalCost = 0;
-          for (var t in txs) {
-            if (t.paidBy == member.id) totalPaid += t.amount;
-            if (t.participants.contains(member.id)) {
-              totalCost += t.amount / (t.participants.isEmpty ? 1 : t.participants.length);
-            }
-          }
+          // Reuses the same multi-payer/unequal-split aware math as the rest of the app.
+          final summary = ExpenseCalculator.calculateMemberSummary(txs, member.id);
+          final totalPaid = summary.totalPaid;
+          final totalCost = summary.totalShare;
 
           return CustomScrollView(
             slivers: [
@@ -88,9 +84,14 @@ class MemberTransactionDetailScreen extends StatelessWidget {
                     delegate: SliverChildBuilderDelegate(
                           (context, index) {
                         final tx = txs[index];
-                        final isPaidBy = tx.paidBy == member.id;
+                        final paidAmount = tx.payers.isNotEmpty
+                            ? tx.payers
+                                .where((p) => p.uid == member.id)
+                                .fold<double>(0, (sum, p) => sum + p.amount)
+                            : (tx.paidBy == member.id ? tx.amount : 0);
+                        final isPaidBy = paidAmount > 0;
                         final isParticipant = tx.participants.contains(member.id);
-                        final share = tx.amount / (tx.participants.isEmpty ? 1 : tx.participants.length);
+                        final share = tx.shareFor(member.id);
 
                         return Card(
                           elevation: 0,
@@ -109,7 +110,7 @@ class MemberTransactionDetailScreen extends StatelessWidget {
                                 size: 20,
                               ),
                             ),
-                            title: Text(tx.category!.toUpperCase(),
+                            title: Text((tx.category ?? 'Expense').toUpperCase(),
                                 style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,7 +124,7 @@ class MemberTransactionDetailScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 if (isPaidBy)
-                                  Text('+${Fmt.money(tx.amount)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                  Text('+${Fmt.money(paidAmount)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                                 if (isParticipant)
                                   Text('-${Fmt.money(share)}', style: TextStyle(color: colorScheme.error, fontSize: 12)),
                               ],

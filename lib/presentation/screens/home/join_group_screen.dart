@@ -21,6 +21,20 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   String? _err;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybePrefillFromLink());
+  }
+
+  // Prefills + auto-joins when opened via a splitnest://join?code=... deep link.
+  void _maybePrefillFromLink() {
+    final code = GoRouterState.of(context).uri.queryParameters['code'];
+    if (code == null || code.isEmpty) return;
+    _idController.text = code;
+    _join();
+  }
+
+  @override
   void dispose() {
     _idController.dispose();
     super.dispose();

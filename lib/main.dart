@@ -14,6 +14,7 @@ import 'data/group_repo.dart';
 import 'data/personal_repo.dart';
 import 'data/notifications_repo.dart';
 import 'data/chat_repo.dart';
+import 'data/deep_link_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,9 +26,12 @@ Future<void> main() async {
     await notificationsRepo.initAndSaveToken(currentUid);
   }
 
+  final deepLinkService = DeepLinkService();
+
   runApp(SplitNestApp(notificationsRepo: notificationsRepo));
   WidgetsBinding.instance.addPostFrameCallback((_) {
     notificationsRepo.configureMessageNavigation(appRouter.go);
+    deepLinkService.init(appRouter.go);
   });
 }
 

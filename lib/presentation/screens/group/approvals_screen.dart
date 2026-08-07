@@ -87,7 +87,7 @@ class ApprovalsScreen extends StatelessWidget {
                                               BorderRadius.circular(8),
                                         ),
                                         child: Text(
-                                          t.category!.toUpperCase(),
+                                          (t.category ?? 'General').toUpperCase(),
                                           style: theme.textTheme.labelSmall
                                               ?.copyWith(
                                             color: colorScheme

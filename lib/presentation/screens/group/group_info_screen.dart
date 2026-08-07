@@ -1,8 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/format.dart';
 import '../../../data/auth_repo.dart';
@@ -167,10 +169,25 @@ class GroupInfoScreen extends StatelessWidget {
                                   _VLine(color: stroke),
                                   Expanded(
                                     child: _QuickActionTile(
+                                      icon: Icons.fact_check_outlined,
+                                      label: 'Approvals',
+                                      onTap: () => context.pushNamed(
+                                        'group_approvals',
+                                        pathParameters: {'groupId': groupId},
+                                      ),
+                                    ),
+                                  ),
+                                  _VLine(color: stroke),
+                                  Expanded(
+                                    child: _QuickActionTile(
                                       icon: Icons.person_add_alt_1_rounded,
                                       label: 'Add',
-                                      onTap: () =>
-                                          _showInviteSheet(context, groupId),
+                                      onTap: () => _showInviteSheet(
+                                        context,
+                                        groupId,
+                                        group,
+                                        myUid,
+                                      ),
                                     ),
                                   ),
                                   _VLine(color: stroke),
@@ -178,8 +195,10 @@ class GroupInfoScreen extends StatelessWidget {
                                     child: _QuickActionTile(
                                       icon: Icons.search_rounded,
                                       label: 'Search',
-                                      onTap: () => context
-                                          .push('/group/$groupId/search'),
+                                      onTap: () => context.pushNamed(
+                                        'group_transactions',
+                                        pathParameters: {'groupId': groupId},
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -427,6 +446,14 @@ class GroupInfoScreen extends StatelessWidget {
                                   return ListTile(
                                     contentPadding: const EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 6),
+                                    onTap: () => context.pushNamed(
+                                      'group_member_detail',
+                                      pathParameters: {
+                                        'groupId': groupId,
+                                        'memberId': m.id,
+                                      },
+                                      extra: m,
+                                    ),
                                     leading: CircleAvatar(
                                       backgroundColor: amountColor.withValues(
                                           alpha: isDark ? 0.18 : 0.12),
@@ -660,7 +687,12 @@ class GroupInfoScreen extends StatelessWidget {
   }
 
   // ✅ Bottom sheet uses QR style copied from settings screen + copy invite code from this file
-  void _showInviteSheet(BuildContext context, String groupId) {
+  void _showInviteSheet(
+    BuildContext context,
+    String groupId,
+    Group group,
+    String myUid,
+  ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -673,7 +705,8 @@ class GroupInfoScreen extends StatelessWidget {
       ),
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
@@ -684,7 +717,11 @@ class GroupInfoScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+            _InviteFriendsSection(groupId: groupId, group: group, myUid: myUid),
+            const SizedBox(height: 20),
+            Divider(color: colorScheme.outlineVariant),
+            const SizedBox(height: 20),
             Text(
               'Group Invite QR',
               style: theme.textTheme.headlineSmall
@@ -764,7 +801,23 @@ class GroupInfoScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 12),
+
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Share.share(
+                  'Join my group "${group.name}" on SplitNest!\n\n'
+                  'If you already have the app installed, tap this link:\n'
+                  'splitnest://join?code=$groupId\n\n'
+                  'Otherwise, open SplitNest and enter this code: $groupId',
+                ),
+                icon: const Icon(Icons.ios_share_rounded),
+                label: const Text('Share Invite Link'),
+              ),
+            ),
+
+            const SizedBox(height: 12),
 
             SizedBox(
               width: double.infinity,
@@ -774,6 +827,7 @@ class GroupInfoScreen extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -856,6 +910,115 @@ class _SectionCard extends StatelessWidget {
         border: Border.all(color: stroke),
       ),
       child: child,
+    );
+  }
+}
+
+// ================= INVITE FROM FRIEND LIST =================
+
+class _InviteFriendsSection extends StatelessWidget {
+  final String groupId;
+  final Group group;
+  final String myUid;
+
+  const _InviteFriendsSection({
+    required this.groupId,
+    required this.group,
+    required this.myUid,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final chatRepo = context.read<ChatRepo>();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Invite a friend',
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: chatRepo.watchFriends(myUid),
+          builder: (context, snap) {
+            final docs = (snap.data?.docs ?? const [])
+                .where((d) => !group.memberUids.contains(d.id))
+                .toList();
+
+            if (!snap.hasData) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            if (docs.isEmpty) {
+              return Text(
+                'All your friends are already in this group, or you have no friends yet.',
+                style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              );
+            }
+
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: docs.length,
+                separatorBuilder: (_, __) => Divider(height: 1, color: cs.outlineVariant),
+                itemBuilder: (context, i) {
+                  final friendUid = docs[i].id;
+                  final chatId = (docs[i].data()['chatId'] as String?) ??
+                      chatRepo.chatIdFor(myUid, friendUid);
+                  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    stream: chatRepo.watchUser(friendUid),
+                    builder: (context, userSnap) {
+                      final name = userSnap.data?.data()?['name'] as String? ?? 'Friend';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          child: Text(name.isEmpty ? '?' : name[0].toUpperCase()),
+                        ),
+                        title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        trailing: FilledButton.tonal(
+                          onPressed: () async {
+                            try {
+                              await chatRepo.sendGroupInvite(
+                                chatId: chatId,
+                                senderUid: myUid,
+                                groupId: groupId,
+                                groupName: group.name,
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Invite sent to $name')),
+                                );
+                              }
+                            } catch (error) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      error.toString().replaceFirst('Exception: ', ''),
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          child: const Text('Invite'),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

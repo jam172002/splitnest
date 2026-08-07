@@ -323,6 +323,50 @@ class ChatRepo {
     await batch.commit();
   }
 
+  Future<void> sendGroupInvite({
+    required String chatId,
+    required String senderUid,
+    required String groupId,
+    required String groupName,
+  }) async {
+    final chatRef = _db.collection('chats').doc(chatId);
+    final chatSnapshot = await chatRef.get();
+    final members = List<String>.from(
+      chatSnapshot.data()?['memberUids'] ?? const <String>[],
+    );
+    if (!chatSnapshot.exists || !members.contains(senderUid)) {
+      throw Exception('You can only invite accepted friends');
+    }
+    final messageRef = chatRef.collection('messages').doc();
+    final text = 'Invited you to join "$groupName"';
+    final batch = _db.batch();
+    batch.set(messageRef, {
+      'senderUid': senderUid,
+      'text': text,
+      'type': 'group_invite',
+      'groupId': groupId,
+      'groupName': groupName,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    batch.set(
+      chatRef,
+      {
+        'lastMessage': text,
+        'lastSenderUid': senderUid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+  }
+
+  Future<void> unfriend(String uid, String otherUid) async {
+    final batch = _db.batch();
+    batch.delete(_db.doc('users/$uid/friends/$otherUid'));
+    batch.delete(_db.doc('users/$otherUid/friends/$uid'));
+    await batch.commit();
+  }
+
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> mutualGroups(
     String firstUid,
     String secondUid,

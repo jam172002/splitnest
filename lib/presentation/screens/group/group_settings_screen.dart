@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
@@ -24,7 +25,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
   bool? _adminBypass;
   String? _approvalMode;
 
-  void _showInviteQR(BuildContext context, String groupId) {
+  void _showInviteQR(BuildContext context, String groupId, String groupName) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
@@ -80,7 +81,21 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
             Text('Group ID: $groupId',
                 style: theme.textTheme.labelMedium
                     ?.copyWith(letterSpacing: 1.2)),
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Share.share(
+                  'Join my group "$groupName" on SplitNest!\n\n'
+                  'If you already have the app installed, tap this link:\n'
+                  'splitnest://join?code=$groupId\n\n'
+                  'Otherwise, open SplitNest and enter this code: $groupId',
+                ),
+                icon: const Icon(Icons.ios_share_rounded),
+                label: const Text('Share Invite Link'),
+              ),
+            ),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -178,8 +193,31 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
               children: [
                 _buildSectionHeader(context, 'Invite Members'),
                 FilledButton.tonal(
-                  onPressed: () => _showInviteQR(context, widget.groupId),
+                  onPressed: () => _showInviteQR(context, widget.groupId, g.name),
                   child: const Text('Show QR Code'),
+                ),
+
+                const SizedBox(height: 32),
+                _buildSectionHeader(context, 'Group Data'),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.label_outline_rounded),
+                  title: const Text('Manage Categories'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.pushNamed(
+                    'group_categories',
+                    pathParameters: {'groupId': widget.groupId},
+                  ),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.fact_check_outlined),
+                  title: const Text('Pending Approvals'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.pushNamed(
+                    'group_approvals',
+                    pathParameters: {'groupId': widget.groupId},
+                  ),
                 ),
 
                 const SizedBox(height: 32),

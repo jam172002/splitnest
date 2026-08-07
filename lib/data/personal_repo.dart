@@ -27,6 +27,7 @@ class PersonalRepo {
     PersonalTxType type = PersonalTxType.expense,
     String? counterparty,
     String? targetLoanId,
+    String? category,
   }) async {
     final ref = _col(uid).doc();
 
@@ -39,6 +40,7 @@ class PersonalRepo {
       loanId: (type == PersonalTxType.loanGiven || type == PersonalTxType.loanTaken) ? ref.id : null,
       counterparty: (counterparty == null || counterparty.trim().isEmpty) ? null : counterparty.trim(),
       targetLoanId: (type == PersonalTxType.loanPayment) ? targetLoanId : null,
+      category: (category == null || category.trim().isEmpty) ? null : category.trim(),
     );
 
     await ref.set(tx.toMap());
@@ -108,6 +110,7 @@ class PersonalRepo {
     PersonalTxType? type,
     String? counterparty,
     String? targetLoanId,
+    String? category,
   }) async {
     final data = <String, dynamic>{};
     if (amount != null) data['amount'] = amount;
@@ -116,6 +119,7 @@ class PersonalRepo {
     if (type != null) data['type'] = type.name;
     if (counterparty != null) data['counterparty'] = counterparty;
     if (targetLoanId != null) data['targetLoanId'] = targetLoanId;
+    if (category != null) data['category'] = category;
 
     await _col(uid).doc(id).update(data);
   }

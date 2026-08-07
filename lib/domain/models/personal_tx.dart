@@ -26,6 +26,10 @@ class PersonalTx {
   // For loan payments:
   final String? targetLoanId; // loan this payment belongs to
 
+  // Category for expense/income entries (e.g. "Groceries", "Salary").
+  // Nullable/optional for backward compatibility with older docs.
+  final String? category;
+
   PersonalTx({
     required this.id,
     required this.amount,
@@ -36,6 +40,7 @@ class PersonalTx {
     this.loanId,
     this.counterparty,
     this.targetLoanId,
+    this.category,
   });
 
   Map<String, dynamic> toMap() => {
@@ -48,6 +53,7 @@ class PersonalTx {
     'loanId': loanId,
     'counterparty': counterparty,
     'targetLoanId': targetLoanId,
+    'category': category,
   };
 
   factory PersonalTx.fromMap(String id, Map<String, dynamic> m) {
@@ -68,8 +74,14 @@ class PersonalTx {
       loanId: (m['loanId'] as String?),
       counterparty: (m['counterparty'] as String?),
       targetLoanId: (m['targetLoanId'] as String?),
+      category: (m['category'] as String?),
     );
   }
+
+  /// Effective category for display/grouping — falls back to 'Other'
+  /// for expense/income docs that predate the category field.
+  String get categoryOrDefault =>
+      (category == null || category!.trim().isEmpty) ? 'Other' : category!.trim();
 
   // Convenience helpers (optional)
   bool get isExpense => type == PersonalTxType.expense;

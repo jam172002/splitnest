@@ -49,5 +49,18 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.splitnest.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>splitnest</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -8,8 +8,22 @@ import '../../../data/chat_repo.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/empty_hint.dart';
 
-class ChatHomeScreen extends StatelessWidget {
+class ChatHomeScreen extends StatefulWidget {
   const ChatHomeScreen({super.key});
+
+  @override
+  State<ChatHomeScreen> createState() => _ChatHomeScreenState();
+}
+
+class _ChatHomeScreenState extends State<ChatHomeScreen> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,39 +69,125 @@ class ChatHomeScreen extends StatelessWidget {
               );
             }
 
-            return ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: friends.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final friendUid = friends[index].id;
-                return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  stream: repo.watchUser(friendUid),
-                  builder: (context, userSnapshot) {
-                    final data = userSnapshot.data?.data();
-                    final name = data?['name'] as String? ?? 'User';
-                    final publicId = data?['publicId'] as String? ?? '';
-                    return ListTile(
-                      leading: CircleAvatar(
-                        child: Text(name.isEmpty ? '?' : name[0].toUpperCase()),
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+                    decoration: InputDecoration(
+                      hintText: 'Search friends',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      suffixIcon: _query.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close_rounded),
+                              onPressed: () => setState(() {
+                                _query = '';
+                                _searchController.clear();
+                              }),
+                            ),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      title: Text(
-                        name,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      subtitle:
-                          Text(publicId.isEmpty ? 'Connected' : 'ID $publicId'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => context.push('/chat/$friendUid'),
-                    );
-                  },
-                );
-              },
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: friends.length,
+                    itemBuilder: (context, index) {
+                      final friendUid = friends[index].id;
+                      return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                        stream: repo.watchUser(friendUid),
+                        builder: (context, userSnapshot) {
+                          final data = userSnapshot.data?.data();
+                          final name = data?['name'] as String? ?? 'User';
+                          final publicId = data?['publicId'] as String? ?? '';
+
+                          if (_query.isNotEmpty && !name.toLowerCase().contains(_query)) {
+                            return const SizedBox.shrink();
+                          }
+
+                          return Column(
+                            children: [
+                              ListTile(
+                                leading: CircleAvatar(
+                                  child: Text(name.isEmpty ? '?' : name[0].toUpperCase()),
+                                ),
+                                title: Text(
+                                  name,
+                                  style: const TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                subtitle:
+                                    Text(publicId.isEmpty ? 'Connected' : 'ID $publicId'),
+                                trailing: PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert_rounded),
+                                  onSelected: (value) {
+                                    if (value == 'unfriend') {
+                                      _confirmUnfriend(context, repo, uid, friendUid, name);
+                                    } else if (value == 'open') {
+                                      context.push('/chat/$friendUid');
+                                    }
+                                  },
+                                  itemBuilder: (context) => const [
+                                    PopupMenuItem(value: 'open', child: Text('Open chat')),
+                                    PopupMenuItem(
+                                      value: 'unfriend',
+                                      child: Text('Unfriend'),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () => context.push('/chat/$friendUid'),
+                              ),
+                              const Divider(height: 1),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
             );
           },
         ),
       ),
     );
+  }
+
+  static Future<void> _confirmUnfriend(
+    BuildContext context,
+    ChatRepo repo,
+    String uid,
+    String friendUid,
+    String name,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unfriend?'),
+        content: Text('Remove $name from your friends? Your chat history will be kept.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unfriend'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await repo.unfriend(uid, friendUid);
   }
 
   static Future<void> _showAddFriend(
