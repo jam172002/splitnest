@@ -12,7 +12,8 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell,  // ← this replaces widget.child and enables state preservation
+      body:
+          navigationShell, // ← this replaces widget.child and enables state preservation
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (index) {
@@ -23,7 +24,10 @@ class AppShell extends StatelessWidget {
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.groups), label: 'Groups'),
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Personal'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline), label: 'Personal'),
+          NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
           NavigationDestination(icon: Icon(Icons.settings), label: 'Profile'),
         ],
       ),

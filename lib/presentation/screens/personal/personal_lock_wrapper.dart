@@ -10,6 +10,10 @@ class PersonalLockWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<PersonalLockController>(
       builder: (context, lock, _) {
+        if (!lock.isInitialized) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!lock.isEnabled) return child;
         final locked = lock.isLocked;
 
         Widget content = child;
@@ -19,7 +23,8 @@ class PersonalLockWrapper extends StatelessWidget {
           behavior: HitTestBehavior.translucent,
           onPointerDown: (_) => lock.bumpInactivity(),
           onPointerMove: (_) => lock.bumpInactivity(),
-          onPointerSignal: (_) => lock.bumpInactivity(), // mouse wheel / trackpad
+          onPointerSignal: (_) =>
+              lock.bumpInactivity(), // mouse wheel / trackpad
           child: NotificationListener<ScrollNotification>(
             onNotification: (_) {
               lock.bumpInactivity();
@@ -57,7 +62,7 @@ class _LockedOverlay extends StatelessWidget {
     final lock = context.read<PersonalLockController>();
 
     // 1) biometric first
-    final canBio = await lock.canBiometric();
+    final canBio = lock.useBiometric && await lock.canBiometric();
     if (canBio) {
       final ok = await lock.authBiometric();
       if (ok) {
@@ -69,6 +74,7 @@ class _LockedOverlay extends StatelessWidget {
 
     // 2) fallback to PIN
     final hasPin = await lock.hasPin();
+    if (!context.mounted) return;
     final pin = await showDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -84,6 +90,7 @@ class _LockedOverlay extends StatelessWidget {
     }
 
     final ok = await lock.verifyPin(pin);
+    if (!context.mounted) return;
     if (ok) {
       lock.unlockFor(lock.lockDuration);
     } else {
@@ -97,48 +104,48 @@ class _LockedOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SizedBox.expand( // ✅ makes it fill Stack space
-      child: Material(
-        color: cs.surface.withValues(alpha: 0.99),
-        child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.lock_rounded, size: 46, color: cs.primary),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Personal tab is locked',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w900),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Unlock with fingerprint / device lock / PIN.\nAuto-locks after 10 seconds.',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: () => _unlock(context),
-                      icon: const Icon(Icons.fingerprint),
-                      label: const Text('Unlock'),
-                    ),
-                  ],
-                ),
+    return SizedBox.expand(
+        // ✅ makes it fill Stack space
+        child: Material(
+      color: cs.surface.withValues(alpha: 0.99),
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock_rounded, size: 46, color: cs.primary),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Personal tab is locked',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w900),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Unlock with biometrics or your PIN.\nAuto-lock is controlled in Personal Expenses settings.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => _unlock(context),
+                    icon: const Icon(Icons.fingerprint),
+                    label: const Text('Unlock'),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      )
-    );
+      ),
+    ));
   }
 }
 

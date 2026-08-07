@@ -1,50 +1,101 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
 class PersonalLockController extends ChangeNotifier {
   static const _pinKey = 'personal_lock_pin';
+  static const _enabledKey = 'personal_lock_enabled';
+  static const _biometricKey = 'personal_lock_biometric';
+  static const _durationKey = 'personal_lock_duration_seconds';
   static const _storage = FlutterSecureStorage();
 
-  Duration lockDuration = const Duration(seconds: 10);
   final LocalAuthentication _auth = LocalAuthentication();
   DateTime? _unlockedUntil;
   Timer? _timer;
 
-  bool get isUnlocked =>
-      _unlockedUntil != null && DateTime.now().isBefore(_unlockedUntil!);
+  bool isInitialized = false;
+  bool isEnabled = false;
+  bool useBiometric = true;
+  Duration lockDuration = const Duration(minutes: 1);
 
-  bool get isLocked => !isUnlocked;
-
-  /// Call this whenever the user interacts with the Personal tab.
-  /// It extends the unlock window by [lockDuration] from *now*.
-  void bumpInactivity() {
-    if (isLocked) return; // don't bump when already locked
-    _unlockedUntil = DateTime.now().add(lockDuration);
-    _timer?.cancel();
-    _timer = Timer(lockDuration, () {
-      notifyListeners(); // show overlay after inactivity duration
-    });
-    // no need to notify every tap; but ok if you want
-    // notifyListeners();
+  PersonalLockController() {
+    _loadSettings();
   }
 
-  void unlockFor(Duration d) {
-    _unlockedUntil = DateTime.now().add(d);
-    _timer?.cancel();
-    _timer = Timer(d, () {
+  bool get isUnlocked =>
+      !isEnabled ||
+      (_unlockedUntil != null && DateTime.now().isBefore(_unlockedUntil!));
+
+  bool get isLocked => isEnabled && !isUnlocked;
+
+  Future<void> _loadSettings() async {
+    final enabled = await _storage.read(key: _enabledKey);
+    final biometric = await _storage.read(key: _biometricKey);
+    final seconds = int.tryParse(
+      await _storage.read(key: _durationKey) ?? '',
+    );
+
+    isEnabled = enabled == 'true';
+    useBiometric = biometric != 'false';
+    if (seconds != null && seconds >= 10) {
+      lockDuration = Duration(seconds: seconds);
+    }
+    isInitialized = true;
+    notifyListeners();
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    isEnabled = enabled;
+    await _storage.write(key: _enabledKey, value: '$enabled');
+    if (enabled) {
+      lockNow();
+    } else {
+      _unlockedUntil = null;
+      _timer?.cancel();
       notifyListeners();
-    });
+    }
+  }
+
+  Future<void> setUseBiometric(bool enabled) async {
+    useBiometric = enabled;
+    await _storage.write(key: _biometricKey, value: '$enabled');
+    notifyListeners();
+  }
+
+  Future<void> setLockDuration(Duration duration) async {
+    lockDuration = duration;
+    await _storage.write(
+      key: _durationKey,
+      value: '${duration.inSeconds}',
+    );
+    if (isUnlocked && isEnabled) unlockFor(duration);
+    notifyListeners();
+  }
+
+  void bumpInactivity() {
+    if (!isEnabled || isLocked) return;
+    _unlockedUntil = DateTime.now().add(lockDuration);
+    _timer?.cancel();
+    _timer = Timer(lockDuration, lockNow);
+  }
+
+  void unlockFor(Duration duration) {
+    if (!isEnabled) return;
+    _unlockedUntil = DateTime.now().add(duration);
+    _timer?.cancel();
+    _timer = Timer(duration, lockNow);
     notifyListeners();
   }
 
   void lockNow() {
+    if (!isEnabled) return;
     _unlockedUntil = null;
     _timer?.cancel();
     notifyListeners();
   }
-  // ---- PIN ----
+
   Future<bool> hasPin() async {
     final pin = await _storage.read(key: _pinKey);
     return pin != null && pin.trim().isNotEmpty;
@@ -54,19 +105,20 @@ class PersonalLockController extends ChangeNotifier {
     await _storage.write(key: _pinKey, value: pin.trim());
   }
 
+  Future<void> removePin() async {
+    await _storage.delete(key: _pinKey);
+  }
+
   Future<bool> verifyPin(String pin) async {
     final saved = await _storage.read(key: _pinKey);
     return saved != null && saved == pin.trim();
   }
 
-  // ---- BIOMETRIC ----
   Future<bool> canBiometric() async {
     try {
       final supported = await _auth.isDeviceSupported();
       if (!supported) return false;
-
-      final biometrics = await _auth.getAvailableBiometrics();
-      return biometrics.isNotEmpty;
+      return (await _auth.getAvailableBiometrics()).isNotEmpty;
     } catch (_) {
       return false;
     }
@@ -74,10 +126,8 @@ class PersonalLockController extends ChangeNotifier {
 
   Future<bool> authBiometric() async {
     try {
-      // This shows Fingerprint OR Face ID depending on device,
-      // and may allow device PIN/pattern fallback automatically.
       return await _auth.authenticate(
-        localizedReason: 'Unlock Personal tab',
+        localizedReason: 'Unlock Personal Expenses',
       );
     } catch (_) {
       return false;

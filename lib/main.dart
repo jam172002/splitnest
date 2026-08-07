@@ -13,6 +13,7 @@ import 'data/auth_repo.dart';
 import 'data/group_repo.dart';
 import 'data/personal_repo.dart';
 import 'data/notifications_repo.dart';
+import 'data/chat_repo.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,6 +48,7 @@ class SplitNestApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PersonalLockController()),
         Provider(create: (_) => GroupRepo()),
         Provider(create: (_) => PersonalRepo()),
+        Provider(create: (_) => ChatRepo()),
         Provider.value(value: notificationsRepo),
       ],
       child: Builder(

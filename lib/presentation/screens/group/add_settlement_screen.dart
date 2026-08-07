@@ -14,8 +14,15 @@ import '../../widgets/busy_button.dart';
 
 class AddSettlementScreen extends StatefulWidget {
   final String groupId;
+  final String? initialFromUid;
+  final String? initialToUid;
 
-  const AddSettlementScreen({super.key, required this.groupId});
+  const AddSettlementScreen({
+    super.key,
+    required this.groupId,
+    this.initialFromUid,
+    this.initialToUid,
+  });
 
   @override
   State<AddSettlementScreen> createState() => _AddSettlementScreenState();
@@ -33,6 +40,8 @@ class _AddSettlementScreenState extends State<AddSettlementScreen> {
   void initState() {
     super.initState();
     _selectedGroupId = widget.groupId;
+    _from = widget.initialFromUid;
+    _to = widget.initialToUid;
   }
 
   @override

@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/format.dart';
 import '../../../data/auth_repo.dart';
 import '../../../data/group_repo.dart';
+import '../../../data/chat_repo.dart';
 import '../../../domain/models/expense_calculator.dart';
 import '../../../domain/models/group.dart';
 import '../../../domain/models/group_member.dart';
@@ -38,7 +39,8 @@ class GroupInfoScreen extends StatelessWidget {
       stream: repo.watchGroup(groupId),
       builder: (context, groupSnap) {
         if (!groupSnap.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         final group = groupSnap.data!;
 
@@ -59,11 +61,12 @@ class GroupInfoScreen extends StatelessWidget {
               // ✅ Keep existing core: admin-only FAB
               floatingActionButton: isAdmin
                   ? FloatingActionButton(
-                backgroundColor: AppColors.green,
-                foregroundColor: AppColors.white,
-                onPressed: () => _showAddMemberSheet(context, repo, isDark),
-                child: const Icon(Icons.person_add_rounded),
-              )
+                      backgroundColor: AppColors.green,
+                      foregroundColor: AppColors.white,
+                      onPressed: () =>
+                          _showAddMemberSheet(context, repo, isDark),
+                      child: const Icon(Icons.person_add_rounded),
+                    )
                   : null,
 
               child: SingleChildScrollView(
@@ -82,17 +85,17 @@ class GroupInfoScreen extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                         child: Column(
                           children: [
-
-
                             // big centered avatar
                             Container(
                               width: 104,
                               height: 104,
                               decoration: BoxDecoration(
-                                color: AppColors.green.withValues(alpha: isDark ? 0.18 : 0.12),
+                                color: AppColors.green
+                                    .withValues(alpha: isDark ? 0.18 : 0.12),
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: AppColors.green.withValues(alpha: 0.35),
+                                  color:
+                                      AppColors.green.withValues(alpha: 0.35),
                                   width: 1.2,
                                 ),
                               ),
@@ -145,7 +148,8 @@ class GroupInfoScreen extends StatelessWidget {
                                     ? Colors.white.withValues(alpha: 0.04)
                                     : Colors.black.withValues(alpha: 0.03),
                                 borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: stroke.withValues(alpha: 0.9)),
+                                border: Border.all(
+                                    color: stroke.withValues(alpha: 0.9)),
                               ),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               child: Row(
@@ -154,16 +158,19 @@ class GroupInfoScreen extends StatelessWidget {
                                     child: _QuickActionTile(
                                       icon: Icons.verified_user_outlined,
                                       label: 'Approval',
-                                      onTap: () => context.pushNamed( 'group_settings', pathParameters: {'groupId': groupId}, ),
+                                      onTap: () => context.pushNamed(
+                                        'group_settings',
+                                        pathParameters: {'groupId': groupId},
+                                      ),
                                     ),
                                   ),
-
                                   _VLine(color: stroke),
                                   Expanded(
                                     child: _QuickActionTile(
                                       icon: Icons.person_add_alt_1_rounded,
                                       label: 'Add',
-                                      onTap:() => _showInviteSheet(context, groupId),
+                                      onTap: () =>
+                                          _showInviteSheet(context, groupId),
                                     ),
                                   ),
                                   _VLine(color: stroke),
@@ -171,7 +178,8 @@ class GroupInfoScreen extends StatelessWidget {
                                     child: _QuickActionTile(
                                       icon: Icons.search_rounded,
                                       label: 'Search',
-                                      onTap: () => context.push('/group/$groupId/search'),
+                                      onTap: () => context
+                                          .push('/group/$groupId/search'),
                                     ),
                                   ),
                                 ],
@@ -205,19 +213,21 @@ class GroupInfoScreen extends StatelessWidget {
                         // ✅ Total approved expenses
                         final approvedExpenses = txs.where((t) {
                           final isApproved = t.status == TxStatus.approved;
-                          final isExpense = (t.type == 'expense'); // keep your existing logic
+                          final isExpense =
+                              (t.type == 'expense'); // keep your existing logic
                           return isApproved && isExpense;
                         }).toList();
 
                         final totalExpense = approvedExpenses.fold<double>(
                           0.0,
-                              (sum, t) => sum + t.amount,
+                          (sum, t) => sum + t.amount,
                         );
 
                         // ✅ Optional quick chips (top 3 categories preview)
                         final Map<String, double> byCategory = {};
                         for (final t in approvedExpenses) {
-                          final cat = (t.category == null || (t.category ?? '').trim().isEmpty)
+                          final cat = (t.category == null ||
+                                  (t.category ?? '').trim().isEmpty)
                               ? 'Uncategorized'
                               : t.category!.trim();
                           byCategory[cat] = (byCategory[cat] ?? 0) + t.amount;
@@ -233,9 +243,11 @@ class GroupInfoScreen extends StatelessWidget {
                           stroke: stroke,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(18),
-                            onTap: () => context.push('/group/$groupId/combined'),
+                            onTap: () =>
+                                context.push('/group/$groupId/combined'),
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 10, 14, 14),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -245,7 +257,8 @@ class GroupInfoScreen extends StatelessWidget {
                                       Expanded(
                                         child: Text(
                                           'Combined Expenses',
-                                          style: theme.textTheme.titleSmall?.copyWith(
+                                          style: theme.textTheme.titleSmall
+                                              ?.copyWith(
                                             color: text,
                                             fontWeight: FontWeight.w900,
                                           ),
@@ -253,13 +266,15 @@ class GroupInfoScreen extends StatelessWidget {
                                       ),
                                       Text(
                                         Fmt.money(totalExpense),
-                                        style: theme.textTheme.titleMedium?.copyWith(
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
                                           color: AppColors.green,
                                           fontWeight: FontWeight.w900,
                                         ),
                                       ),
                                       const SizedBox(width: 6),
-                                      Icon(Icons.chevron_right_rounded, color: subText),
+                                      Icon(Icons.chevron_right_rounded,
+                                          color: subText),
                                     ],
                                   ),
 
@@ -269,7 +284,8 @@ class GroupInfoScreen extends StatelessWidget {
                                   if (previewCats.isEmpty)
                                     Text(
                                       'No approved expenses yet',
-                                      style: theme.textTheme.bodySmall?.copyWith(
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
                                         color: subText,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -287,16 +303,21 @@ class GroupInfoScreen extends StatelessWidget {
                                             ),
                                             decoration: BoxDecoration(
                                               color: isDark
-                                                  ? Colors.white.withValues(alpha: 0.05)
-                                                  : Colors.black.withValues(alpha: 0.04),
-                                              borderRadius: BorderRadius.circular(999),
+                                                  ? Colors.white
+                                                      .withValues(alpha: 0.05)
+                                                  : Colors.black
+                                                      .withValues(alpha: 0.04),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
                                               border: Border.all(
-                                                color: stroke.withValues(alpha: 0.9),
+                                                color: stroke.withValues(
+                                                    alpha: 0.9),
                                               ),
                                             ),
                                             child: Text(
                                               '${e.key} • ${Fmt.money(e.value)}',
-                                              style: theme.textTheme.bodySmall?.copyWith(
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
                                                 color: subText,
                                                 fontWeight: FontWeight.w800,
                                               ),
@@ -314,8 +335,6 @@ class GroupInfoScreen extends StatelessWidget {
 
                     const SizedBox(height: 10),
 
-
-
                     Text(
                       'Members',
                       style: theme.textTheme.titleLarge?.copyWith(
@@ -330,17 +349,20 @@ class GroupInfoScreen extends StatelessWidget {
                       stream: repo.watchMembers(groupId),
                       builder: (context, memSnap) {
                         if (memSnap.hasError) {
-                          return Text('Error: ${memSnap.error}', style: TextStyle(color: text));
+                          return Text('Error: ${memSnap.error}',
+                              style: TextStyle(color: text));
                         }
                         if (!memSnap.hasData) {
-                          return const Center(child: CircularProgressIndicator());
+                          return const Center(
+                              child: CircularProgressIndicator());
                         }
 
                         final members = memSnap.data!;
                         if (members.isEmpty) {
                           return Text(
                             'No members found',
-                            style: theme.textTheme.bodyMedium?.copyWith(color: subText),
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: subText),
                           );
                         }
 
@@ -350,7 +372,8 @@ class GroupInfoScreen extends StatelessWidget {
                             if (!txSnap.hasData) {
                               return const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 18),
-                                child: Center(child: CircularProgressIndicator()),
+                                child:
+                                    Center(child: CircularProgressIndicator()),
                               );
                             }
 
@@ -358,21 +381,23 @@ class GroupInfoScreen extends StatelessWidget {
                             final netMap = <String, double>{};
 
                             for (final m in members) {
-                              final summary = ExpenseCalculator.calculateMemberSummary(txs, m.id);
+                              final summary =
+                                  ExpenseCalculator.calculateMemberSummary(
+                                      txs, m.id);
                               netMap[m.id] = summary.netBalance;
                             }
 
                             final sorted = [...members]..sort((a, b) {
-                              if (a.isAdmin && !b.isAdmin) return -1;
-                              if (!a.isAdmin && b.isAdmin) return 1;
+                                if (a.isAdmin && !b.isAdmin) return -1;
+                                if (!a.isAdmin && b.isAdmin) return 1;
 
-                              final na = netMap[a.id] ?? 0.0;
-                              final nb = netMap[b.id] ?? 0.0;
-                              final byNet = nb.compareTo(na);
-                              if (byNet != 0) return byNet;
+                                final na = netMap[a.id] ?? 0.0;
+                                final nb = netMap[b.id] ?? 0.0;
+                                final byNet = nb.compareTo(na);
+                                if (byNet != 0) return byNet;
 
-                              return a.joinedAt.compareTo(b.joinedAt);
-                            });
+                                return a.joinedAt.compareTo(b.joinedAt);
+                              });
 
                             return Container(
                               decoration: BoxDecoration(
@@ -384,23 +409,32 @@ class GroupInfoScreen extends StatelessWidget {
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: sorted.length,
-                                separatorBuilder: (_, __) =>
-                                    Divider(height: 1, color: stroke.withValues(alpha: 0.7)),
+                                separatorBuilder: (_, __) => Divider(
+                                    height: 1,
+                                    color: stroke.withValues(alpha: 0.7)),
                                 itemBuilder: (context, index) {
                                   final m = sorted[index];
                                   final net = netMap[m.id] ?? 0.0;
 
                                   final isCredit = net >= 0;
-                                  final amountColor = isCredit ? AppColors.green : Colors.red.shade400;
-                                  final label = net == 0 ? 'Settled' : (isCredit ? 'Credited' : 'Owes');
+                                  final amountColor = isCredit
+                                      ? AppColors.green
+                                      : Colors.red.shade400;
+                                  final label = net == 0
+                                      ? 'Settled'
+                                      : (isCredit ? 'Credited' : 'Owes');
 
                                   return ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 6),
                                     leading: CircleAvatar(
-                                      backgroundColor: amountColor.withValues(alpha: isDark ? 0.18 : 0.12),
+                                      backgroundColor: amountColor.withValues(
+                                          alpha: isDark ? 0.18 : 0.12),
                                       child: Text(
                                         m.initials,
-                                        style: TextStyle(color: amountColor, fontWeight: FontWeight.w900),
+                                        style: TextStyle(
+                                            color: amountColor,
+                                            fontWeight: FontWeight.w900),
                                       ),
                                     ),
                                     title: Row(
@@ -410,12 +444,15 @@ class GroupInfoScreen extends StatelessWidget {
                                             m.name,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(color: text, fontWeight: FontWeight.w900),
+                                            style: TextStyle(
+                                                color: text,
+                                                fontWeight: FontWeight.w900),
                                           ),
                                         ),
                                         Text(
                                           m.roleDisplay,
-                                          style: theme.textTheme.bodySmall?.copyWith(
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
                                             color: subText,
                                             fontWeight: FontWeight.w800,
                                           ),
@@ -424,8 +461,10 @@ class GroupInfoScreen extends StatelessWidget {
                                     ),
                                     subtitle: Text(
                                       '$label • Joined ${m.joinedAt.day}/${m.joinedAt.month}/${m.joinedAt.year}',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: amountColor.withValues(alpha: 0.95),
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color:
+                                            amountColor.withValues(alpha: 0.95),
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
@@ -434,17 +473,80 @@ class GroupInfoScreen extends StatelessWidget {
                                       children: [
                                         Text(
                                           Fmt.money(net.abs()),
-                                          style: theme.textTheme.titleMedium?.copyWith(
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
                                             color: amountColor,
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
+                                        if (m.id != myUid)
+                                          StreamBuilder(
+                                            stream: context
+                                                .read<ChatRepo>()
+                                                .watchUser(m.id),
+                                            builder: (context, userSnapshot) {
+                                              if (userSnapshot.data?.exists !=
+                                                  true) {
+                                                return const SizedBox.shrink();
+                                              }
+                                              return IconButton(
+                                                tooltip: 'Send friend request',
+                                                onPressed: () async {
+                                                  try {
+                                                    await context
+                                                        .read<ChatRepo>()
+                                                        .sendFriendRequest(
+                                                          fromUid: myUid,
+                                                          toUid: m.id,
+                                                        );
+                                                    if (context.mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                            'Friend request sent',
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                  } catch (error) {
+                                                    if (context.mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                            error
+                                                                .toString()
+                                                                .replaceFirst(
+                                                                  'Exception: ',
+                                                                  '',
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                  }
+                                                },
+                                                icon: const Icon(
+                                                  Icons
+                                                      .person_add_alt_1_outlined,
+                                                ),
+                                              );
+                                            },
+                                          ),
                                         if (isAdmin && !m.isAdmin)
                                           IconButton(
-                                            icon: Icon(Icons.person_remove_outlined,
+                                            icon: Icon(
+                                                Icons.person_remove_outlined,
                                                 color: Colors.red.shade400),
-                                            onPressed: () =>
-                                                _confirmDelete(context, repo, groupId, m.id, m.name),
+                                            onPressed: () => _confirmDelete(
+                                                context,
+                                                repo,
+                                                groupId,
+                                                m.id,
+                                                m.name),
                                           ),
                                       ],
                                     ),
@@ -466,14 +568,16 @@ class GroupInfoScreen extends StatelessWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, GroupRepo repo, String groupId, String uid, String name) {
+  void _confirmDelete(BuildContext context, GroupRepo repo, String groupId,
+      String uid, String name) {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Remove member?'),
         content: Text('Are you sure you want to remove $name from the group?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
           TextButton(
             onPressed: () async {
               await repo.removeMember(groupId, uid);
@@ -512,7 +616,10 @@ class GroupInfoScreen extends StatelessWidget {
               children: [
                 Text(
                   'Add new member',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -530,7 +637,8 @@ class GroupInfoScreen extends StatelessWidget {
                     if (nameController.text.trim().isEmpty) return;
 
                     setModalState(() => isBusy = true);
-                    final virtualUid = DateTime.now().millisecondsSinceEpoch.toString();
+                    final virtualUid =
+                        DateTime.now().millisecondsSinceEpoch.toString();
 
                     await repo.addMember(
                       groupId: groupId,
@@ -579,7 +687,8 @@ class GroupInfoScreen extends StatelessWidget {
             const SizedBox(height: 24),
             Text(
               'Group Invite QR',
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -617,7 +726,8 @@ class GroupInfoScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                color:
+                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: colorScheme.outlineVariant),
               ),
@@ -628,7 +738,8 @@ class GroupInfoScreen extends StatelessWidget {
                       'Invite code: $groupId',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
                     ),
                   ),
                   IconButton(
@@ -640,9 +751,10 @@ class GroupInfoScreen extends StatelessWidget {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: const Text('Invite code copied'),
-                            backgroundColor: Theme.of(context).brightness == Brightness.dark
-                                ? const Color(0xFF141719)
-                                : Colors.black,
+                            backgroundColor:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF141719)
+                                    : Colors.black,
                           ),
                         );
                       }
@@ -698,7 +810,9 @@ class _QuickActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final sub = isDark ? Colors.white.withValues(alpha: 0.74) : Colors.black.withValues(alpha: 0.64);
+    final sub = isDark
+        ? Colors.white.withValues(alpha: 0.74)
+        : Colors.black.withValues(alpha: 0.64);
 
     return InkWell(
       onTap: onTap,
@@ -745,4 +859,3 @@ class _SectionCard extends StatelessWidget {
     );
   }
 }
-

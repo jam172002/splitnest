@@ -16,7 +16,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _name = TextEditingController();    // ← NEW
+  final _name = TextEditingController(); // ← NEW
   final _email = TextEditingController();
   final _pass = TextEditingController();
   bool _busy = false;
@@ -24,14 +24,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
-    _name.dispose();    // ← NEW
+    _name.dispose(); // ← NEW
     _email.dispose();
     _pass.dispose();
     super.dispose();
   }
 
   Future<void> _register() async {
-    if (_name.text.trim().isEmpty || _email.text.trim().isEmpty || _pass.text.trim().isEmpty) {
+    if (_name.text.trim().isEmpty ||
+        _email.text.trim().isEmpty ||
+        _pass.text.trim().isEmpty) {
       setState(() => _err = "Please fill in all fields");
       return;
     }
@@ -42,7 +44,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final credential =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _email.text.trim(),
         password: _pass.text.trim(),
       );
@@ -51,11 +54,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       await credential.user?.updateDisplayName(_name.text.trim());
 
       // Save to Firestore users collection
-      await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(credential.user!.uid)
+          .set({
         'name': _name.text.trim(),
         'email': _email.text.trim(),
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
 
       // Your existing notification setup
       final uid = credential.user!.uid;
@@ -63,7 +69,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (mounted) context.go('/');
     } catch (e) {
-      setState(() => _err = "Registration failed: ${e.toString().split(']').last}");
+      setState(
+          () => _err = "Registration failed: ${e.toString().split(']').last}");
     } finally {
       if (mounted) setState(() => _busy = false);
     }

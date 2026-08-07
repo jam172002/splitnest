@@ -12,6 +12,9 @@ import 'package:splitnest/presentation/screens/group/group_tx_detail_screen.dart
 import 'package:splitnest/presentation/screens/personal/add_personal_tx_screen.dart';
 import 'package:splitnest/presentation/screens/personal/personal_lock_wrapper.dart';
 import 'package:splitnest/presentation/screens/notifications_screen.dart';
+import 'package:splitnest/presentation/screens/chat/chat_home_screen.dart';
+import 'package:splitnest/presentation/screens/chat/conversation_screen.dart';
+import 'package:splitnest/presentation/screens/profile/personal_expenses_settings_screen.dart';
 
 import 'data/auth_repo.dart';
 import '../presentation/app_shell.dart';
@@ -122,6 +125,14 @@ final appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
+              path: '/app/chat',
+              builder: (context, state) => const ChatHomeScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
               path: '/app/profile',
               builder: (context, state) => const ProfileScreen(),
             ),
@@ -132,6 +143,16 @@ final appRouter = GoRouter(
 
     // ✅ EVERYTHING ELSE OUTSIDE SHELL (no bottom bar)
 
+    GoRoute(
+      path: '/app/profile/personal-expenses',
+      builder: (context, state) => const PersonalExpensesSettingsScreen(),
+    ),
+    GoRoute(
+      path: '/chat/:otherUid',
+      builder: (context, state) => ConversationScreen(
+        otherUid: state.pathParameters['otherUid']!,
+      ),
+    ),
     GoRoute(
       path: '/create-group',
       name: 'create_group',
@@ -191,6 +212,8 @@ final appRouter = GoRouter(
           name: 'add_settlement',
           builder: (context, state) => AddSettlementScreen(
             groupId: state.pathParameters['groupId']!,
+            initialFromUid: state.uri.queryParameters['fromUid'],
+            initialToUid: state.uri.queryParameters['toUid'],
           ),
         ),
       ],

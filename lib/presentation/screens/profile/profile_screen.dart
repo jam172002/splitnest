@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../../data/auth_repo.dart';
+import '../../../data/chat_repo.dart';
 import '../../../theme/theme_mode_controller.dart';
 import '../../widgets/app_scaffold.dart';
 
@@ -51,6 +52,44 @@ class ProfileScreen extends StatelessWidget {
               email: email,
               accent: kBrandGreen,
             ),
+            const SizedBox(height: 12),
+            FutureBuilder<String>(
+              future: context.read<ChatRepo>().ensurePublicId(u!.uid),
+              builder: (context, snapshot) => Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.badge_outlined, color: kBrandGreen),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Your SplitNest ID',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          Text(
+                            snapshot.data ?? 'Preparing your ID...',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 18),
 
             // ---- Clickable section header (opens dialog) ----
@@ -93,6 +132,12 @@ class ProfileScreen extends StatelessWidget {
               title: 'Notifications',
               accent: kBrandGreen,
               onTap: () => context.push('/notifications'),
+            ),
+            _Divider(cs: cs),
+            _TextActionRow(
+              title: 'Personal Expenses',
+              accent: kBrandGreen,
+              onTap: () => context.push('/app/profile/personal-expenses'),
             ),
 
             const SizedBox(height: 22),

@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 
 admin.initializeApp();
 
@@ -78,6 +79,97 @@ async function sendPush(uids, payload) {
     await Promise.all(snapshots.docs.map((doc) => doc.ref.delete()));
   }));
 }
+
+async function sendDirectPush(uids, title, body, data) {
+  const tokens = await getTokensForUsers(uids);
+  if (!tokens.length) return;
+  await admin.messaging().sendEachForMulticast({
+    tokens,
+    notification: { title, body },
+    data: Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [key, String(value)]),
+    ),
+    android: { priority: "high" },
+  });
+}
+
+async function ensurePublicId(uid) {
+  const userRef = db.doc(`users/${uid}`);
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    let normalizedId = String(crypto.randomInt(1, 10));
+    for (let digit = 1; digit < 10; digit += 1) {
+      normalizedId += String(crypto.randomInt(0, 10));
+    }
+    const idRef = db.doc(`publicIds/${normalizedId}`);
+    const result = await db.runTransaction(async (transaction) => {
+      const [userSnapshot, idSnapshot] = await Promise.all([
+        transaction.get(userRef),
+        transaction.get(idRef),
+      ]);
+      if (userSnapshot.data()?.publicId) return userSnapshot.data().publicId;
+      if (idSnapshot.exists) return null;
+      transaction.set(idRef, { uid });
+      transaction.set(userRef, { publicId: normalizedId }, { merge: true });
+      return normalizedId;
+    });
+    if (result) return result;
+  }
+  throw new Error(`Unable to allocate public ID for ${uid}`);
+}
+
+exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
+  await ensurePublicId(user.uid);
+});
+
+exports.onFriendRequestCreate = functions.firestore
+  .document("friendRequests/{requestId}")
+  .onCreate(async (snapshot) => {
+    const request = snapshot.data() || {};
+    if (!request.toUid) return;
+    await sendDirectPush(
+      [request.toUid],
+      "New friend request",
+      `${request.fromName || "A user"} wants to connect with you.`,
+      { type: "friend_request", path: "/app/chat" },
+    );
+  });
+
+exports.onFriendRequestUpdate = functions.firestore
+  .document("friendRequests/{requestId}")
+  .onUpdate(async (change) => {
+    const before = change.before.data() || {};
+    const after = change.after.data() || {};
+    if (before.status === after.status || after.status !== "accepted") return;
+    const receiver = await db.doc(`users/${after.toUid}`).get();
+    await sendDirectPush(
+      [after.fromUid],
+      "Friend request accepted",
+      `${receiver.data()?.name || "Your friend"} accepted your request.`,
+      { type: "friend_accepted", path: `/chat/${after.toUid}` },
+    );
+  });
+
+exports.onChatMessageCreate = functions.firestore
+  .document("chats/{chatId}/messages/{messageId}")
+  .onCreate(async (snapshot, context) => {
+    const message = snapshot.data() || {};
+    const chat = await db.doc(`chats/${context.params.chatId}`).get();
+    const members = chat.data()?.memberUids || [];
+    const recipients = members.filter((uid) => uid !== message.senderUid);
+    if (!recipients.length) return;
+    const sender = await db.doc(`users/${message.senderUid}`).get();
+    await sendDirectPush(
+      recipients,
+      sender.data()?.name || "New message",
+      message.text || "Sent you a message",
+      {
+        type: "chat_message",
+        chatId: context.params.chatId,
+        senderUid: message.senderUid,
+        path: `/chat/${message.senderUid}`,
+      },
+    );
+  });
 
 async function notifyGroup(groupId, txId, eventId, details) {
   const group = await getGroup(groupId);
