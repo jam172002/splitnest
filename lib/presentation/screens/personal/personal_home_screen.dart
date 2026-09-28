@@ -11,6 +11,7 @@ import '../../../data/group_repo.dart';
 import '../../../data/personal_repo.dart';
 import '../../../domain/models/debt_aggregator.dart';
 import '../../../domain/models/personal_tx.dart';
+import 'personal_display_controller.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/empty_hint.dart';
 import '../../widgets/period_selector.dart';
@@ -25,22 +26,15 @@ class PersonalHomeScreen extends StatefulWidget {
 }
 
 class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
-  // --- Hide/Show: each item has its own toggle (default hidden) ---
-  bool _hideBalance = true;
-  bool _hideIncome = true;
-  bool _hideExpense = true;
-  bool _hideToPay = true;
-  bool _hideToReceive = true;
+  // --- Hide/Show: one master toggle controls Balance, Income, Expense,
+  // To Pay, To Receive and Net together. Only shown when the user has
+  // enabled it in Personal Expenses settings (see PersonalDisplayController).
+  bool _hideAll = true;
 
-  // Net-for-period shares one toggle; period is selectable (Week/Month),
-  // defaulting to the current month.
-  bool _hideNets = true;
+  // Period is selectable (Week/Month), defaulting to the current month.
   PeriodType _homePeriod = PeriodType.month;
   String _homePeriodLabel = 'This Month';
   DateRange? _homeRange;
-
-  // Each transaction has its own hide toggle (default hidden)
-  final Map<String, bool> _txHidden = {}; // txId -> hidden?
 
   Timer? _autoHideTimer;
 
@@ -111,8 +105,6 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
     ];
   }
 
-  bool _isTxHidden(String id) => _txHidden[id] ?? true;
-
   void _revealFor5s({
     required VoidCallback setVisible,
     required VoidCallback setHidden,
@@ -125,26 +117,14 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
     });
   }
 
-  void _toggleHeaderHidden(bool current, void Function(bool v) set) {
-    if (current) {
+  void _toggleAllHidden() {
+    if (_hideAll) {
       _revealFor5s(
-        setVisible: () => set(false),
-        setHidden: () => set(true),
+        setVisible: () => _hideAll = false,
+        setHidden: () => _hideAll = true,
       );
     } else {
-      setState(() => set(true));
-    }
-  }
-
-  void _toggleTxHidden(String id) {
-    final current = _isTxHidden(id);
-    if (current) {
-      _revealFor5s(
-        setVisible: () => _txHidden[id] = false,
-        setHidden: () => _txHidden[id] = true,
-      );
-    } else {
-      setState(() => _txHidden[id] = true);
+      setState(() => _hideAll = true);
     }
   }
 
@@ -157,13 +137,7 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
   // Optional hard reset on tab switch / navigation away (keeps everything hidden)
   @override
   void deactivate() {
-    _hideBalance = true;
-    _hideIncome = true;
-    _hideExpense = true;
-    _hideToPay = true;
-    _hideToReceive = true;
-    _hideNets = true;
-    _txHidden.clear();
+    _hideAll = true;
     _autoHideTimer?.cancel();
     super.deactivate();
   }
@@ -172,10 +146,13 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
     BuildContext context, {
     required String uid,
     required PersonalTx tx,
+    required _TxUi info,
+    required bool hide,
   }) async {
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) {
         final theme = Theme.of(ctx);
         final cs = theme.colorScheme;
@@ -194,16 +171,74 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                ListTile(
-                  leading: Icon(_isTxHidden(tx.id)
-                      ? Icons.visibility_off_rounded
-                      : Icons.visibility_rounded),
-                  title: Text(
-                      _isTxHidden(tx.id) ? 'Show amount (5s)' : 'Hide amount'),
-                  onTap: () {
-                    Navigator.pop(ctx, 'toggle');
-                  },
+
+                // ---- Details: title, amount, date, time, category, etc.
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: cs.primary.withValues(alpha: 0.12),
+                      child: Icon(info.icon, color: cs.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            info.title,
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          Text(
+                            info.subtitle,
+                            style: theme.textTheme.labelMedium
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      hide ? '*****' : info.moneyText,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: info.isPositive ? cs.primary : cs.onSurface,
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.35)),
+                  ),
+                  child: Column(
+                    children: [
+                      _DetailRow(
+                          label: 'Date', value: Fmt.date(tx.at)),
+                      const Divider(height: 1),
+                      _DetailRow(
+                          label: 'Time', value: Fmt.time(tx.at)),
+                      if (tx.category != null &&
+                          tx.category!.trim().isNotEmpty) ...[
+                        const Divider(height: 1),
+                        _DetailRow(label: 'Category', value: tx.category!),
+                      ],
+                      if (tx.counterparty != null &&
+                          tx.counterparty!.trim().isNotEmpty) ...[
+                        const Divider(height: 1),
+                        _DetailRow(
+                            label: 'Person', value: tx.counterparty!),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Divider(height: 24),
+
                 ListTile(
                   leading: const Icon(Icons.edit_rounded),
                   title: const Text('Edit'),
@@ -226,11 +261,6 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
     );
 
     if (!mounted || action == null) return;
-
-    if (action == 'toggle') {
-      _toggleTxHidden(tx.id);
-      return;
-    }
 
     if (action == 'edit') {
       // NOTE: Route must exist in your router/app.
@@ -255,7 +285,7 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
   Future<String?> _askDeleteNote(BuildContext context) async {
     final ctrl = TextEditingController();
     try {
-      return showDialog<String>(
+      return await showDialog<String>(
         context: context,
         builder: (ctx) {
           final theme = Theme.of(ctx);
@@ -308,6 +338,9 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final uid = context.read<AuthRepo>().currentUser!.uid;
+    final masterHideEnabled =
+        context.watch<PersonalDisplayController>().masterHideEnabled;
+    final effectiveHide = masterHideEnabled && _hideAll;
 
     return AppScaffold(
       title: 'Personal Ledger',
@@ -410,24 +443,9 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                   slivers: [
                     SliverToBoxAdapter(
                       child: _BankHeader(
-                        hideBalance: _hideBalance,
-                        hideIncome: _hideIncome,
-                        hideExpense: _hideExpense,
-                        hideToPay: _hideToPay,
-                        hideToReceive: _hideToReceive,
-                        hideNets: _hideNets,
-                        onToggleBalance: () => _toggleHeaderHidden(
-                            _hideBalance, (v) => _hideBalance = v),
-                        onToggleIncome: () => _toggleHeaderHidden(
-                            _hideIncome, (v) => _hideIncome = v),
-                        onToggleExpense: () => _toggleHeaderHidden(
-                            _hideExpense, (v) => _hideExpense = v),
-                        onToggleToPay: () => _toggleHeaderHidden(
-                            _hideToPay, (v) => _hideToPay = v),
-                        onToggleToReceive: () => _toggleHeaderHidden(
-                            _hideToReceive, (v) => _hideToReceive = v),
-                        onToggleNets: () => _toggleHeaderHidden(
-                            _hideNets, (v) => _hideNets = v),
+                        hide: effectiveHide,
+                        showHideToggle: masterHideEnabled,
+                        onToggleHide: _toggleAllHidden,
                         balance: balance,
                         income: periodIncome,
                         expense: periodExpense,
@@ -465,7 +483,7 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                             _LoansCard(
                               title: 'Loans to Pay',
                               subtitle: 'You owe',
-                              hide: _hideToPay, // independent
+                              hide: effectiveHide,
                               rows: payableLoans,
                               emptyText: 'No payable loans',
                               onTap: (e) =>
@@ -475,7 +493,7 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                             _LoansCard(
                               title: 'Loans to Receive',
                               subtitle: 'You will get back',
-                              hide: _hideToReceive, // independent
+                              hide: effectiveHide,
                               rows: receivableLoans,
                               emptyText: 'No receivable loans',
                               onTap: (e) =>
@@ -537,7 +555,11 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                               final info =
                                   _txUiInfo(context, t, loanPrincipals);
 
-                              final hideTx = _isTxHidden(t.id);
+                              // Recent Activity follows the same master
+                              // toggle as everything else: visible when the
+                              // feature is off, masked/revealed together
+                              // with the rest when it's on.
+                              final hideTx = effectiveHide;
 
                               return Card(
                                 elevation: 0,
@@ -550,8 +572,11 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                                           .withValues(alpha: 0.35)),
                                 ),
                                 child: ListTile(
-                                  onTap: () =>
-                                      _showTxActions(context, uid: uid, tx: t),
+                                  onTap: () => _showTxActions(context,
+                                      uid: uid,
+                                      tx: t,
+                                      info: info,
+                                      hide: hideTx),
                                   leading: CircleAvatar(
                                     backgroundColor:
                                         cs.primary.withValues(alpha: 0.12),
@@ -569,22 +594,10 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        tooltip: hideTx ? 'Show (5s)' : 'Hide',
-                                        onPressed: () => _toggleTxHidden(t.id),
-                                        icon: Icon(hideTx
-                                            ? Icons.visibility_off_rounded
-                                            : Icons.visibility_rounded),
-                                      ),
-                                      _MoneyText(
-                                        hide: hideTx,
-                                        value: info.moneyText,
-                                        isPositive: info.isPositive,
-                                      ),
-                                    ],
+                                  trailing: _MoneyText(
+                                    hide: hideTx,
+                                    value: info.moneyText,
+                                    isPositive: info.isPositive,
                                   ),
                                 ),
                               );
@@ -699,6 +712,36 @@ class _PersonalHomeScreenState extends State<PersonalHomeScreen> {
   }
 }
 
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Text(label, style: theme.textTheme.labelMedium
+              ?.copyWith(color: cs.onSurfaceVariant)),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TxUi {
   final String title;
   final String subtitle;
@@ -716,19 +759,12 @@ class _TxUi {
 }
 
 class _BankHeader extends StatelessWidget {
-  final bool hideBalance;
-  final bool hideIncome;
-  final bool hideExpense;
-  final bool hideToPay;
-  final bool hideToReceive;
-  final bool hideNets;
-
-  final VoidCallback onToggleBalance;
-  final VoidCallback onToggleIncome;
-  final VoidCallback onToggleExpense;
-  final VoidCallback onToggleToPay;
-  final VoidCallback onToggleToReceive;
-  final VoidCallback onToggleNets;
+  // Single master hide flag (and its optional toggle button) replaces the
+  // per-item toggles; the button only shows when enabled in Personal
+  // Expenses settings.
+  final bool hide;
+  final bool showHideToggle;
+  final VoidCallback onToggleHide;
 
   final double balance;
   final double income;
@@ -745,18 +781,9 @@ class _BankHeader extends StatelessWidget {
   final ValueChanged<DateRange> onHomeRangeChanged;
 
   const _BankHeader({
-    required this.hideBalance,
-    required this.hideIncome,
-    required this.hideExpense,
-    required this.hideToPay,
-    required this.hideToReceive,
-    required this.hideNets,
-    required this.onToggleBalance,
-    required this.onToggleIncome,
-    required this.onToggleExpense,
-    required this.onToggleToPay,
-    required this.onToggleToReceive,
-    required this.onToggleNets,
+    required this.hide,
+    required this.showHideToggle,
+    required this.onToggleHide,
     required this.balance,
     required this.income,
     required this.expense,
@@ -801,24 +828,26 @@ class _BankHeader extends StatelessWidget {
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const Spacer(),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onToggleBalance,
-                      icon: Icon(
-                        hideBalance
-                            ? Icons.visibility_off_rounded
-                            : Icons.visibility_rounded,
-                        size: 20,
+                    if (showHideToggle)
+                      IconButton(
+                        tooltip: hide ? 'Show amounts (5s)' : 'Hide amounts',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onToggleHide,
+                        icon: Icon(
+                          hide
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          size: 20,
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 180),
                   child: Text(
-                    hideBalance ? '*****' : Fmt.money(balance),
-                    key: ValueKey(hideBalance),
+                    hide ? '*****' : Fmt.money(balance),
+                    key: ValueKey(hide),
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w900,
                       color: cs.primary,
@@ -851,20 +880,16 @@ class _BankHeader extends StatelessWidget {
               Expanded(
                 child: _StatPill(
                   label: 'Income',
-                  value: hideIncome ? '*****' : Fmt.money(income),
+                  value: hide ? '*****' : Fmt.money(income),
                   icon: Icons.north_east_rounded,
-                  hidden: hideIncome,
-                  onToggle: onToggleIncome,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _StatPill(
                   label: 'Expenses',
-                  value: hideExpense ? '*****' : Fmt.money(expense),
+                  value: hide ? '*****' : Fmt.money(expense),
                   icon: Icons.south_west_rounded,
-                  hidden: hideExpense,
-                  onToggle: onToggleExpense,
                 ),
               ),
             ],
@@ -878,20 +903,16 @@ class _BankHeader extends StatelessWidget {
               Expanded(
                 child: _StatPill(
                   label: 'To Pay',
-                  value: hideToPay ? '*****' : Fmt.money(payable),
+                  value: hide ? '*****' : Fmt.money(payable),
                   icon: Icons.payments_rounded,
-                  hidden: hideToPay,
-                  onToggle: onToggleToPay,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _StatPill(
                   label: 'To Receive',
-                  value: hideToReceive ? '*****' : Fmt.money(receivable),
+                  value: hide ? '*****' : Fmt.money(receivable),
                   icon: Icons.savings_rounded,
-                  hidden: hideToReceive,
-                  onToggle: onToggleToReceive,
                 ),
               ),
             ],
@@ -900,25 +921,10 @@ class _BankHeader extends StatelessWidget {
           const SizedBox(height: 10),
 
           // ✅ Net for a selectable period (defaults to current month)
-          Row(
-            children: [
-              Text(
-                'Net',
-                style: theme.textTheme.labelLarge
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: onToggleNets,
-                icon: Icon(
-                  hideNets
-                      ? Icons.visibility_off_rounded
-                      : Icons.visibility_rounded,
-                  size: 20,
-                ),
-              ),
-            ],
+          Text(
+            'Net',
+            style: theme.textTheme.labelLarge
+                ?.copyWith(fontWeight: FontWeight.w800),
           ),
 
           const SizedBox(height: 6),
@@ -926,7 +932,7 @@ class _BankHeader extends StatelessWidget {
           _MiniNet(
             label: periodLabel,
             value: periodNet,
-            hide: hideNets,
+            hide: hide,
           ),
         ],
       ),
@@ -983,15 +989,10 @@ class _StatPill extends StatelessWidget {
   final String value;
   final IconData icon;
 
-  final bool hidden;
-  final VoidCallback onToggle;
-
   const _StatPill({
     required this.label,
     required this.value,
     required this.icon,
-    required this.hidden,
-    required this.onToggle,
   });
 
   @override
@@ -1026,15 +1027,6 @@ class _StatPill extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            onPressed: onToggle,
-            icon: Icon(
-                hidden
-                    ? Icons.visibility_off_rounded
-                    : Icons.visibility_rounded,
-                size: 18),
           ),
         ],
       ),

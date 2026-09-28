@@ -1,9 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
 class AuthRepo extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
   StreamSubscription<User?>? _authSubscription;
 
   AuthRepo() {
@@ -15,8 +17,17 @@ class AuthRepo extends ChangeNotifier {
 
   User? get currentUser => _auth.currentUser;
 
-  Future<void> register(String email, String pass) async {
-    await _auth.createUserWithEmailAndPassword(email: email, password: pass);
+  Future<void> register(String name, String email, String pass) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: pass,
+    );
+    await credential.user?.updateDisplayName(name);
+    await _db.collection('users').doc(credential.user!.uid).set({
+      'name': name,
+      'email': email,
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> login(String email, String pass) async {

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../data/auth_repo.dart';
 import '../../../data/notifications_repo.dart';
 import '../../widgets/busy_button.dart';
 import '../../widgets/app_scaffold.dart';
+
+final _emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -16,25 +18,44 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _name = TextEditingController(); // ← NEW
+  final _name = TextEditingController();
   final _email = TextEditingController();
   final _pass = TextEditingController();
+  final _confirmPass = TextEditingController();
   bool _busy = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   String? _err;
 
   @override
   void dispose() {
-    _name.dispose(); // ← NEW
+    _name.dispose();
     _email.dispose();
     _pass.dispose();
+    _confirmPass.dispose();
     super.dispose();
   }
 
   Future<void> _register() async {
-    if (_name.text.trim().isEmpty ||
-        _email.text.trim().isEmpty ||
-        _pass.text.trim().isEmpty) {
+    final name = _name.text.trim();
+    final email = _email.text.trim();
+    final pass = _pass.text.trim();
+    final confirmPass = _confirmPass.text.trim();
+
+    if (name.isEmpty || email.isEmpty || pass.isEmpty || confirmPass.isEmpty) {
       setState(() => _err = "Please fill in all fields");
+      return;
+    }
+    if (!_emailRegex.hasMatch(email)) {
+      setState(() => _err = "Enter a valid email address");
+      return;
+    }
+    if (pass.length < 6) {
+      setState(() => _err = "Password must be at least 6 characters");
+      return;
+    }
+    if (pass != confirmPass) {
+      setState(() => _err = "Passwords do not match");
       return;
     }
 
@@ -42,37 +63,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _busy = true;
       _err = null;
     });
+    final authRepo = context.read<AuthRepo>();
+    final notificationsRepo = context.read<NotificationsRepo>();
 
     try {
-      final credential =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _email.text.trim(),
-        password: _pass.text.trim(),
-      );
+      await authRepo.register(name, email, pass);
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          _err = switch (e.code) {
+            'email-already-in-use' => 'An account already exists for that email',
+            'invalid-email' => 'Enter a valid email address',
+            'weak-password' => 'Choose a stronger password',
+            'network-request-failed' =>
+              'Check your internet connection and try again.',
+            _ => 'Unable to create your account. Please try again.',
+          };
+          _busy = false;
+        });
+      }
+      return;
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _err = 'Unable to create your account. Please try again.';
+          _busy = false;
+        });
+      }
+      return;
+    }
 
-      // Save name to Firebase Auth display name
-      await credential.user?.updateDisplayName(_name.text.trim());
+    // Registration succeeded — don't let notification setup failures look like signup failures.
+    try {
+      final uid = authRepo.currentUser!.uid;
+      await notificationsRepo.initAndSaveToken(uid);
+    } catch (_) {}
 
-      // Save to Firestore users collection
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(credential.user!.uid)
-          .set({
-        'name': _name.text.trim(),
-        'email': _email.text.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Your existing notification setup
-      final uid = credential.user!.uid;
-      await context.read<NotificationsRepo>().initAndSaveToken(uid);
-
-      if (mounted) context.go('/');
-    } catch (e) {
-      setState(
-          () => _err = "Registration failed: ${e.toString().split(']').last}");
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    if (mounted) {
+      setState(() => _busy = false);
+      context.go('/');
     }
   }
 
@@ -139,10 +168,47 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               TextField(
                 controller: _pass,
-                obscureText: true,
-                decoration: const InputDecoration(
+                obscureText: _obscurePassword,
+                decoration: InputDecoration(
                   labelText: 'Password',
-                  prefixIcon: Icon(Icons.lock_outline_rounded),
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  suffixIcon: IconButton(
+                    tooltip:
+                        _obscurePassword ? 'Show password' : 'Hide password',
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: _confirmPass,
+                obscureText: _obscureConfirmPassword,
+                onSubmitted: (_) => _register(),
+                decoration: InputDecoration(
+                  labelText: 'Confirm Password',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  suffixIcon: IconButton(
+                    tooltip: _obscureConfirmPassword
+                        ? 'Show password'
+                        : 'Hide password',
+                    onPressed: () {
+                      setState(() =>
+                          _obscureConfirmPassword = !_obscureConfirmPassword);
+                    },
+                    icon: Icon(
+                      _obscureConfirmPassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
                 ),
               ),
 

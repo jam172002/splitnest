@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:splitnest/presentation/screens/personal/personal_display_controller.dart';
 import 'package:splitnest/presentation/screens/personal/personal_lock_controller.dart';
 import 'package:splitnest/theme/theme.dart';
 import 'package:splitnest/theme/theme_mode_controller.dart';
@@ -23,7 +24,11 @@ Future<void> main() async {
   final notificationsRepo = NotificationsRepo();
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
   if (currentUid != null) {
-    await notificationsRepo.initAndSaveToken(currentUid);
+    // Notification permission may be denied/blocked (e.g. user declined it) —
+    // that must never stop the app from launching.
+    try {
+      await notificationsRepo.initAndSaveToken(currentUid);
+    } catch (_) {}
   }
 
   final deepLinkService = DeepLinkService();
@@ -50,6 +55,7 @@ class SplitNestApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthRepo()),
         ChangeNotifierProvider(create: (_) => ThemeModeController()),
         ChangeNotifierProvider(create: (_) => PersonalLockController()),
+        ChangeNotifierProvider(create: (_) => PersonalDisplayController()),
         Provider(create: (_) => GroupRepo()),
         Provider(create: (_) => PersonalRepo()),
         Provider(create: (_) => ChatRepo()),

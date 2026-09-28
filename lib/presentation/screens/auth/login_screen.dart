@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../data/auth_repo.dart';
 import '../../../data/notifications_repo.dart';
 import '../../widgets/busy_button.dart';
 import '../../widgets/app_scaffold.dart';
+
+final _emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,8 +32,15 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (_email.text.isEmpty || _pass.text.isEmpty) {
+    final email = _email.text.trim();
+    final pass = _pass.text.trim();
+
+    if (email.isEmpty || pass.isEmpty) {
       setState(() => _err = "Please fill in all fields");
+      return;
+    }
+    if (!_emailRegex.hasMatch(email)) {
+      setState(() => _err = "Enter a valid email address");
       return;
     }
 
@@ -42,14 +52,46 @@ class _LoginScreenState extends State<LoginScreen> {
     final notificationsRepo = context.read<NotificationsRepo>();
 
     try {
-      await authRepo.login(_email.text.trim(), _pass.text.trim());
+      await authRepo.login(email, pass);
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          _err = switch (e.code) {
+            'user-not-found' ||
+            'wrong-password' ||
+            'invalid-credential' =>
+              'Incorrect email or password',
+            'invalid-email' => 'Enter a valid email address',
+            'user-disabled' => 'This account has been disabled',
+            'too-many-requests' =>
+              'Too many attempts. Please wait a moment and try again.',
+            'network-request-failed' =>
+              'Check your internet connection and try again.',
+            _ => 'Unable to sign in. Please try again.',
+          };
+          _busy = false;
+        });
+      }
+      return;
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _err = 'Unable to sign in. Please try again.';
+          _busy = false;
+        });
+      }
+      return;
+    }
+
+    // Login succeeded — don't let notification setup failures look like login failures.
+    try {
       final uid = authRepo.currentUser!.uid;
       await notificationsRepo.initAndSaveToken(uid);
-      if (mounted) context.go('/');
-    } catch (_) {
-      if (mounted) setState(() => _err = 'Invalid email or password');
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _busy = false);
+      context.go('/');
     }
   }
 

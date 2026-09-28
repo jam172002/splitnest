@@ -29,6 +29,9 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
 
   PersonalTxType _type = PersonalTxType.expense;
 
+  // Date + time of the entry (defaults to now; editable via the picker below).
+  DateTime _at = DateTime.now();
+
   // For loan payment
   String? _targetLoanId;
 
@@ -80,7 +83,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
           id: _editId!,
           amount: amt,
           title: title,
-          at: DateTime.now(),
+          at: _at,
           type: _type,
           counterparty: _counterparty.text.trim().isEmpty ? null : _counterparty.text.trim(),
           targetLoanId: _type == PersonalTxType.loanPayment ? _targetLoanId : null,
@@ -92,7 +95,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
           uid: uid,
           amount: amt,
           title: title,
-          at: DateTime.now(),
+          at: _at,
           type: _type,
           counterparty: _counterparty.text.trim().isEmpty ? null : _counterparty.text.trim(),
           targetLoanId: _type == PersonalTxType.loanPayment ? _targetLoanId : null,
@@ -141,6 +144,7 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
         _counterparty.text = tx.counterparty ?? '';
         _targetLoanId = tx.targetLoanId;
         _category = tx.category;
+        _at = tx.at;
         _loadingEdit = false;
       });
 
@@ -225,6 +229,35 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
                 labelText: _labelForTitle(_type),
                 prefixIcon: const Icon(Icons.description_outlined),
                 hintText: _hintForTitle(_type),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Date + time of the entry
+            InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: _pickDateTime,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+                  color: cs.surface,
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.event_outlined, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        Fmt.dateTime(_at),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Icon(Icons.edit_calendar_outlined, size: 18, color: cs.onSurfaceVariant),
+                  ],
+                ),
               ),
             ),
 
@@ -330,6 +363,32 @@ class _AddPersonalTxScreenState extends State<AddPersonalTxScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _at,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_at),
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _at = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time?.hour ?? _at.hour,
+        time?.minute ?? _at.minute,
+      );
+    });
   }
 
   Widget _typeChip(String text, PersonalTxType t, IconData icon) {
@@ -512,8 +571,13 @@ class _LoanPicker extends StatelessWidget {
                 return Text('No open loans found.', style: theme.textTheme.bodyMedium);
               }
 
+              final validIds = open.map((e) => e.key).toSet();
+              final effectiveValue =
+                  validIds.contains(selectedLoanId) ? selectedLoanId : null;
+
               return DropdownButtonFormField<String>(
-                initialValue: selectedLoanId,
+                initialValue: effectiveValue,
+                isExpanded: true,
                 items: open.map((e) {
                   final loan = e.value;
                   final rem = loan.amount - (paid[e.key] ?? 0);
@@ -521,7 +585,10 @@ class _LoanPicker extends StatelessWidget {
                       ? ''
                       : ' • ${loan.counterparty}';
                   final label = '${loan.type == PersonalTxType.loanTaken ? 'To Pay' : 'To Receive'}$who  —  ${Fmt.money(rem)}';
-                  return DropdownMenuItem(value: e.key, child: Text(label, overflow: TextOverflow.ellipsis));
+                  return DropdownMenuItem(
+                    value: e.key,
+                    child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  );
                 }).toList(),
                 onChanged: onChanged,
                 decoration: const InputDecoration(

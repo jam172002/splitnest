@@ -6,8 +6,13 @@ class PersonalLockWrapper extends StatelessWidget {
   final Widget child;
   const PersonalLockWrapper({super.key, required this.child});
 
+  // Lock feature is disabled for now — pass through unconditionally.
+  static const bool _lockFeatureEnabled = false;
+
   @override
   Widget build(BuildContext context) {
+    if (!_lockFeatureEnabled) return child;
+
     return Consumer<PersonalLockController>(
       builder: (context, lock, _) {
         if (!lock.isInitialized) {
